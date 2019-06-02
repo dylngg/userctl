@@ -1,7 +1,7 @@
 CC = gcc
 
 # userctl options
-CFLAGS += -Wall -std=c99
+CFLAGS += -Wall -std=c99 -Wformat -Wformat-security -O2 -D_FORTIFY_SOURCE=2 -Werror=implicit-function-declaration
 INCLUDE += -Iinclude
 EXE = userctl
 SRCDIR = src
