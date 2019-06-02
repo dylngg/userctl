@@ -1,4 +1,4 @@
-# userctl
+# WIP: userctl
 A tool to set persistent and configurable resource controls on users and groups with systemd cgroups.
 
 ## Motivation
