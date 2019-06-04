@@ -4,7 +4,7 @@
 /* A resource control (systemd) */
 typedef struct {
     const char* key;
-    const char* values[];
+    const char* value;
 } ResourceControl;
 
 #endif // CONTROLLER_H

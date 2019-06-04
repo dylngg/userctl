@@ -18,7 +18,8 @@ int main(int argc, char* argv[]) {
         {"list", list},
 //        {"set-property", set_property},
 //        {"status", status},
-        {}
+//        {"reload", reload},
+        {0}
     };
     return dispatch_cmd(argc, argv, cmds);
 }

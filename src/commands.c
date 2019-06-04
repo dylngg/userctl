@@ -53,7 +53,7 @@ int list(int argc, char* argv[]) {
         static struct option long_options[] = {
           {"status", no_argument, &status_flag,1},
           {"help", no_argument, &help, 1},
-          {}
+          {0}
         };
 
         int option_index = 0;
