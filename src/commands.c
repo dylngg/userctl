@@ -9,10 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "macros.h"
 #include "commands.h"
 #include "classparser.h"
 
-#define MSG_BUFSIZE 4096
 
 int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     assert(cmds);  // Make sure cmds is not null
@@ -86,7 +86,7 @@ int list(int argc, char* argv[]) {
     int num_files = 0;
     if (list_class_files(&class_files, &num_files) != 0) {
         char error_msg[MSG_BUFSIZE];
-        snprintf(error_msg, sizeof(error_msg),
+        snprintf(error_msg, sizeof error_msg,
                  "Error getting class files (%s/*%s)", default_loc,
                  default_ext);
         perror(error_msg);

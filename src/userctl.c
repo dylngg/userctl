@@ -1,14 +1,7 @@
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "commands.h"
 
-/*
- * Runs a userctl command.
- */
 int main(int argc, char* argv[]) {
+    // FIXME: Check if root or has correct capabilites
     static const Command cmds[] = {
 //        {"add-group", add_group}
 //        {"add-user", add_user},
