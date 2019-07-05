@@ -22,12 +22,6 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]);
 int list(int argc, char* argv[]);
 
 /*
- * Prints out the class. If status is true, then the full status of the class
- * is printed out.
- */
-void print_class(struct dirent* classfile, bool status);
-
-/*
  * Prints out the help for the list command.
  */
 void show_list_help();

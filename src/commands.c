@@ -13,6 +13,8 @@
 #include "commands.h"
 #include "classparser.h"
 
+void _print_class(struct dirent* classfile);
+
 
 int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     assert(cmds);  // Make sure cmds is not null
@@ -40,18 +42,16 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     exit(1);
 }
 
-static int status_flag = 0;
-static int help = 0;
-static int stop = 0;
+static int help;
 
 int list(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
     int c;
+    int stop = 0;
     while(true) {
         static struct option long_options[] = {
-          {"status", no_argument, &status_flag,1},
           {"help", no_argument, &help, 1},
           {0}
         };
@@ -59,7 +59,6 @@ int list(int argc, char* argv[]) {
         int option_index = 0;
         c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1) break;
-
         switch(c) {
             case 'h':
                 help = 1;
@@ -96,7 +95,7 @@ int list(int argc, char* argv[]) {
     assert(class_files);
     for (int i = 0; i < num_files; i++) {
         if (class_files[i]) {
-            print_class(class_files[i], status_flag);
+            _print_class(class_files[i]);
             free(class_files[i]);
         }
     }
@@ -104,7 +103,10 @@ int list(int argc, char* argv[]) {
     return 0;
 }
 
-void print_class(struct dirent* classfile, bool status) {
+/*
+ * Prints out the class.
+ */
+void _print_class(struct dirent* classfile) {
     char* filename = classfile->d_name;
 
     // Some basename implementations destroy the string in the process
@@ -117,7 +119,6 @@ void print_class(struct dirent* classfile, bool status) {
 
     printf("%s (%s/%s)\n", base_name, default_loc, filename_copy);
     free(filename_copy);
-    // TODO: Implement status flag
 }
 
 void show_list_help() {
@@ -125,7 +126,6 @@ void show_list_help() {
         "userctl list [OPTIONS...]\n\n"
         "List the classes available.\n\n"
         "  -h --help              Show this help\n"
-        "     --status            Show the status of each class\n"
     );
 }
 
