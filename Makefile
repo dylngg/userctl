@@ -1,7 +1,8 @@
+# GCC 4.9+
 CC = gcc
 
 # userctl options
-CFLAGS += -std=c99 -Wall -Wextra -Wformat -Wformat-security -Werror=format-security -Werror=implicit-function-declaration -fstack-protector -pedantic -D_FORTIFY_SOURCE=2
+CFLAGS += -std=c99 -O2 -Wall -Wextra -Wformat -Werror=implicit-function-declaration -Wformat-security -Werror=format-security -fstack-protector-strong -pedantic -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 INCLUDE += -Iinclude
 EXE = userctl
 SRCDIR = src
