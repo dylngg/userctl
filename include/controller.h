@@ -2,9 +2,14 @@
 #define CONTROLLER_H
 
 /* A resource control (systemd) */
-typedef struct {
-    const char* key;
-    const char* value;
+typedef struct ResourceControl {
+    char* key;
+    char* value;
 } ResourceControl;
+
+/*
+ * Destroys the ResourceControl struct by deallocating things.
+ */
+void destroy_control_list(ResourceControl* controls, int ncontrols);
 
 #endif // CONTROLLER_H
