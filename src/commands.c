@@ -19,8 +19,6 @@ void _print_class(struct dirent* classfile);
 int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     assert(cmds);  // Make sure cmds is not null
     assert(cmds[0].dispatch);  // Make sure there are at least 1 cmd given
-    assert(argc >= 1);  // Make sure there's enough args
-    assert(argv);  // Make sure we can actually look at argv
 
     if (argc < 2) {
         printf("No commands provided\n");
@@ -34,7 +32,7 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
             // Remove "userctl cmd" from argv
             argc -= 1;
             argv += 1;
-            return cmds[index].dispatch(argc, argv);
+            cmds[index].dispatch(argc, argv);
         }
         index++;
     }
@@ -44,7 +42,7 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
 
 static int help;
 
-int list(int argc, char* argv[]) {
+void list(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
@@ -78,7 +76,7 @@ int list(int argc, char* argv[]) {
     // Quit after help
     if (help) {
         show_list_help();
-        return 0;
+        exit(0);
     }
 
     struct dirent** class_files = NULL;
@@ -89,7 +87,7 @@ int list(int argc, char* argv[]) {
                  "Error getting class files (%s/*%s)", default_loc,
                  default_ext);
         perror(error_msg);
-        return 1;
+        exit(1);
     }
 
     assert(class_files);
@@ -100,7 +98,6 @@ int list(int argc, char* argv[]) {
         }
     }
     free(class_files);
-    return 0;
 }
 
 /*
