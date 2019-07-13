@@ -53,8 +53,7 @@ Mkfile.old
 dkms.conf
 
 # Programming files
-*.swp
-*.swo
+*.sw*
 .vscode/
 
 # MacOS junk
