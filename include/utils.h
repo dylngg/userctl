@@ -14,13 +14,6 @@ int to_uid(char* username, uid_t* uid);
 int to_gid(char* groupname, gid_t* gid);
 
 /*
- * Given a list of groups, returns a malloced list of corresponding group
- * names. If there is a issue getting a group name, a -1 is returned and that
- * group is skipped and the corresponding ngroups is decreased.
- */
-int groupnames(gid_t* groups, char** groupnames, int* ngroups);
-
-/*
  * Exits if there is a malloc issue.
  */
 void malloc_error_exit();
