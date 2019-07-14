@@ -27,23 +27,27 @@ int _insert_class_prop(ClassProperties* prop, char* restrict key, char* restrict
 void _parse_uids(char* string, ClassProperties* props);
 void _parse_gids(char* string, ClassProperties* props);
 void _trim_whitespace(char** string);
-void _print_line_error(unsigned long long linenum, const char* restrict filename,
+void _print_line_error(unsigned long long linenum, const char* restrict filepath,
                        const char* restrict desc);
 int _class_ext(const struct dirent* dir);
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
 
 
 void destroy_class(ClassProperties* props) {
+    free(props->filepath);
     free(props->users);
     free(props->groups);
     destroy_control_list(props->controls, props->ncontrols);
 }
 
-int parse_classfile(const char* filename, ClassProperties* props) {
-    assert(filename != NULL);
+int parse_classfile(const char* filepath, ClassProperties* props) {
+    assert(filepath != NULL);
     memset(props, 0, sizeof *props);
+    props->filepath = malloc(strlen(filepath) + 1);
+    if (!props->filepath) malloc_error_exit();
+    strcpy(props->filepath, filepath);
 
-    FILE* classfile = fopen(filename, "r");
+    FILE* classfile = fopen(props->filepath, "r");
     if (classfile != NULL) {
         unsigned int linenum = 0;
         bool errors = false;
@@ -63,16 +67,16 @@ int parse_classfile(const char* filename, ClassProperties* props) {
 
             // Ensure equal sign
             if (strchr(end, '=') == NULL) {
-                _print_line_error(linenum, filename, "No key=value found. Ignoring.");
+                _print_line_error(linenum, filepath, "No key=value found. Ignoring.");
                 continue;
             }
             if (_parse_line(end, &key, &value) == -1) {
-                _print_line_error(linenum, filename, "Failed to parse key=value");
+                _print_line_error(linenum, filepath, "Failed to parse key=value");
                 errors = true;
                 continue;
             }
             if (_insert_class_prop(props, key, value) == -1) {
-                _print_line_error(linenum, filename, "Unknown key=value pair");
+                _print_line_error(linenum, filepath, "Unknown key=value pair");
                 errors = true;
                 continue;
             }
@@ -85,11 +89,11 @@ int parse_classfile(const char* filename, ClassProperties* props) {
         }
         else if (ferror(classfile)) {
             // There is an error with the stream
-            perror(filename);
+            perror(filepath);
         }
     }
     else {
-        perror(filename);
+        perror(filepath);
     }
     return -1;
 }
@@ -246,8 +250,8 @@ void _trim_whitespace(char** string) {
     end[0] = '\0';
 }
 
-int write_classfile(const char* filename, ClassProperties* props) {
-    assert(filename != NULL);
+int write_classfile(const char* filepath, ClassProperties* props) {
+    assert(filepath != NULL);
     assert(props != NULL);
     // TODO: Write the function
     return 0;
@@ -256,9 +260,9 @@ int write_classfile(const char* filename, ClassProperties* props) {
 /*
  * Reports on a error on a specific line in the given file.
  */
-void _print_line_error(unsigned long long linenum, const char* restrict filename,
+void _print_line_error(unsigned long long linenum, const char* restrict filepath,
                        const char* restrict desc) {
-    fprintf(stderr, "%llu:%s %s\n", linenum, filename, desc);
+    fprintf(stderr, "%llu:%s %s\n", linenum, filepath, desc);
 }
 
 int list_class_files(struct dirent*** class_files, int* num_files) {
