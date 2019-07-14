@@ -10,6 +10,7 @@
 
 /* The properties of a class */
 typedef struct {
+    char* filepath;
     bool shared;
     float priority;
     gid_t* groups;
@@ -62,6 +63,6 @@ int list_class_files(struct dirent*** class_files, int* num_files);
  * If a -1 is returned, the issue should be looked up via errno. In that case,
  * the result of index is indeterminate.
  */
-int evaluate(uid_t uid, ClassProperties* props_list[], int nprops, int* index);
+int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index);
 
 #endif // CLASSPARSER_H

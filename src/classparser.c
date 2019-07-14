@@ -291,12 +291,12 @@ int _class_ext(const struct dirent* dir) {
 }
 
 
-int evaluate(uid_t uid, ClassProperties* props_list[], int nprops, int* index) {
+int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
     assert(props_list != NULL);
 
     errno = 0;
     struct passwd* pw = getpwuid(uid);
-    if (pw == NULL) return -1;
+    if (!pw) return -1;
 
     int ngroups = (int) sysconf(_SC_NGROUPS_MAX);
     if (ngroups <= 0) return -1;
@@ -307,8 +307,8 @@ int evaluate(uid_t uid, ClassProperties* props_list[], int nprops, int* index) {
 
     double highest_priority = -INFINITY;
     for (int i = 0; i < nprops; i++) {
-        if ((double) props_list[i]->priority > highest_priority &&
-            _in_class(uid, groups, ngroups, props_list[i])) *index = i;
+        if ((double) props_list[i].priority > highest_priority &&
+            _in_class(uid, groups, ngroups, &props_list[i])) *index = i;
     }
     return 0;
 }
