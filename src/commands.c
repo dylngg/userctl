@@ -33,6 +33,7 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
             argc -= 1;
             argv += 1;
             cmds[index].dispatch(argc, argv);
+            exit(0);
         }
         index++;
     }
