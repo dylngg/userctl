@@ -10,6 +10,11 @@
 
 bool _alldigits(char* string);
 
+void die(char* quote) {
+    fputs(quote, stderr);
+    exit(1);
+}
+
 /*
  * Converts the username string to a uid, if it wasn't already. If the user
  * doesn't exist, returns -1.

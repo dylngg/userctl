@@ -4,6 +4,11 @@
 #include <sys/types.h>
 
 /*
+ * Quotes last words into stderr and dies (with exit code of 1).
+ */
+void die(char* quote);
+
+/*
  * Converts the username to a uid. If the user doesn't exist, returns -1.
  */
 int to_uid(char* username, uid_t* uid);
