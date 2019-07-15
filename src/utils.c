@@ -20,7 +20,7 @@ void die(char* quote) {
  * doesn't exist, returns -1.
  */
 int to_uid(char* username, uid_t* uid) {
-    struct passwd* pw = NULL;
+    struct passwd* pw;
     if (_alldigits(username))
         pw = getpwuid((uid_t) strtoll(username, NULL, 10));
     else
@@ -51,8 +51,9 @@ int to_gid(char* groupname, gid_t* gid) {
  */
 bool _alldigits(char* string) {
     if (!string) return false;
+    char* start = string;
     while (*string) if (isdigit(*string++) == 0) return false;
-    return string[0] != '\0';
+    return start != string;
 }
 
 /*
