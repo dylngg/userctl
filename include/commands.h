@@ -24,4 +24,14 @@ void list(int argc, char* argv[]);
  */
 void show_list_help();
 
+/*
+ * Evaluates a user for what class they are in.
+ */
+void eval(int argc, char* argv[]);
+
+/*
+ * Prints out the help for the eval command.
+ */
+void show_eval_help();
+
 #endif // COMMANDS_H

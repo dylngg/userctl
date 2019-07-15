@@ -10,8 +10,7 @@ int main(int argc, char* argv[]) {
 //        {"add-group", add_group}
 //        {"add-user", add_user},
 //        {"edit", edit},
-//        {"eval-group", eval_group}
-//        {"eval-user", eval_user}
+        {"eval", eval},
         {"-h", show_help},
         {"--help", show_help},
         {"list", list},
@@ -28,5 +27,6 @@ void show_help() {
 "Sets configurable and persistent resource controls on users and groups.\n\n"
 "  -h --help\t\tShow this help.\n\n"
 "Commands:\n"
-"  list\t\t\tList the classes available.\n");
+"  list\t\t\tList the possible classes.\n"
+"  eval\t\tEvaluates a user for what class they are in.\n");
 }
