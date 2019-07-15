@@ -59,9 +59,9 @@ int list_class_files(struct dirent*** class_files, int* num_files);
  * Evaluates a user for what class they belong to. If there are multiple
  * classes that the user belongs to, the highest priority class is selected.
  * If there are duplicate highest priorities, the first class found is
- * returned. Returns a -1 if there is an error, otherwise a zero is returned.
- * If a -1 is returned, the issue should be looked up via errno. In that case,
- * the result of index is indeterminate.
+ * returned. If there are no classes that the user belongs to, the index is
+ * untouched. Returns a -1 if there is an error, otherwise a zero is returned.
+ * If a -1 is returned, the issue should be looked up via errno.
  */
 int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index);
 

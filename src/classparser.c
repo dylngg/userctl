@@ -105,15 +105,13 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
 int _parse_line(char* line, char** restrict key, char** restrict value) {
     *value = NULL;
     *key = strsep(&line, "=");
+    *value = line;
     if (*key == NULL || *key[0] == '\0' || *value == NULL || *value[0] == '\0')
         // Either the line didn't have the delim, or there is no value or key
         return -1;
 
     _trim_whitespace(key);
     _trim_whitespace(value);
-    size_t value_len = strlen(*value);
-    char* last_char = &(*value[value_len - 1]);
-    if (*last_char == '\n') *last_char = '\0';  // Remove newline character
     return 0;
 }
 
@@ -149,7 +147,6 @@ int _insert_class_prop(ClassProperties* props, char* restrict key, char* restric
         ResourceControl* controls = realloc(props->controls,
                                             sizeof *controls * (n + 1));
         if (!controls) malloc_error_exit();
-        if (controls != props->controls) free(props->controls);
         props->controls = controls;
 
         controls[n].key = malloc(strlen(key) + 1);
@@ -178,7 +175,6 @@ void _parse_uids(char* string, ClassProperties* props) {
     uid_t* users = props->users;
     uid_t* new_list = realloc(users, sizeof(*new_list) * (*nusers + comma_count));
     if (new_list == NULL) malloc_error_exit();
-    if (users != NULL && new_list != users) free(users);
     props->users = users = new_list;
     uid_t* new_uids_list = users + *nusers;
 
@@ -186,16 +182,17 @@ void _parse_uids(char* string, ClassProperties* props) {
     unsigned int uid_count = 0;
     while ((token = strsep(&string, ",")) != NULL) {
         _trim_whitespace(&token);
-        if (to_uid(token, new_uids_list) == -1) continue;
+        if (to_uid(token, new_uids_list) == -1) {
+            continue;
+        }
         uid_count++;
         new_uids_list++;
     }
     props->nusers = *nusers + uid_count;
     if (uid_count != comma_count) {
         // Resize since not all usernames were valid
-        props->users = realloc(new_list, sizeof(*new_list) * (props->nusers));
+        props->users = realloc(new_list, sizeof(*new_list) * props->nusers);
         if (props->users == NULL) malloc_error_exit();
-        if (props->users != users) free(users);
     }
 }
 
@@ -214,7 +211,6 @@ void _parse_gids(char* string, ClassProperties* props) {
     gid_t* groups = props->groups;
     gid_t* new_list = realloc(groups, sizeof(*new_list) * (*ngroups + comma_count));
     if (new_list == NULL) malloc_error_exit();
-    if (groups != NULL && new_list != groups) free(groups);
     props->groups = groups = new_list;
     gid_t* new_gids_list = groups + *ngroups;
 
@@ -231,7 +227,6 @@ void _parse_gids(char* string, ClassProperties* props) {
         // Resize since not all groupnames were valid
         props->groups = realloc(new_list, sizeof(*new_list) * (props->ngroups));
         if (props->groups == NULL) malloc_error_exit();
-        if (props->groups != groups) free(groups);
     }
 }
 
@@ -244,10 +239,11 @@ void _trim_whitespace(char** string) {
     // Trim leading whitespace
     while(isspace((unsigned char) **string)) (*string)++;
     if(**string == '\0') return;  // ignore if all spaces
+
     // Trip trailing whitespace
     char* end = *string + strlen(*string) - 1;
-    while(end >= *string && isspace((unsigned char) *end)) end--;
-    end[0] = '\0';
+    while(end > *string && isspace((unsigned char) *end)) end--;
+    end[1] = '\0';
 }
 
 int write_classfile(const char* filepath, ClassProperties* props) {
@@ -311,8 +307,12 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
 
     double highest_priority = -INFINITY;
     for (int i = 0; i < nprops; i++) {
+        // Select first if same priority
         if ((double) props_list[i].priority > highest_priority &&
-            _in_class(uid, groups, ngroups, &props_list[i])) *index = i;
+                _in_class(uid, groups, ngroups, &props_list[i])) {
+            highest_priority = props_list[i].priority;
+            *index = i;
+        }
     }
     return 0;
 }
