@@ -89,8 +89,7 @@ void list(int argc, char* argv[]) {
         snprintf(error_msg, sizeof error_msg,
                  "Error getting class files (%s/*%s)", default_loc,
                  default_ext);
-        perror(error_msg);
-        exit(1);
+        errno_die(error_msg);
     }
 
     assert(class_files);
@@ -185,8 +184,7 @@ void eval(int argc, char* argv[]) {
         snprintf(error_msg, sizeof error_msg,
                  "Error getting class files (%s/*%s)", default_loc,
                  default_ext);
-        perror(error_msg);
-        exit(1);
+        errno_die(error_msg);
     }
 
     assert(class_files);
@@ -209,8 +207,7 @@ void eval(int argc, char* argv[]) {
 
     int index = -1;
     if (evaluate(uid, props_list, nprops, &index) == -1) {
-        perror("Error evaluating user");
-        exit(1);
+        errno_die("Error evaluating user");
     }
     if (index == -1)
         printf("No classes found for %s\n", user);

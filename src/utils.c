@@ -15,6 +15,11 @@ void die(char* quote) {
     exit(1);
 }
 
+void errno_die(char* quote) {
+    perror(quote);
+    exit(1);
+}
+
 int to_uid(char* username, uid_t* uid) {
     struct passwd* pw;
     if (_alldigits(username))
@@ -59,11 +64,6 @@ void trim_whitespace(char** string) {
     end[1] = '\0';
 }
 
-/*
- * Exits if there is a malloc issue.
- */
 void malloc_error_exit() {
-    perror("");
-    exit(1);  // We need memory to function
-}
-
+    errno_die("")
+};

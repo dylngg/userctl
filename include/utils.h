@@ -9,6 +9,12 @@
 void die(char* quote);
 
 /*
+ * Quotes last words and errno error into stderr and dies (with exit code of
+ * 1).
+ */
+void errno_die(char* quote);
+
+/*
  * Converts the username string to a uid, if it wasn't already. If the user
  * doesn't exist, returns -1.
  */
