@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "macros.h"
 #include "utils.h"
@@ -144,7 +146,8 @@ void eval(int argc, char* argv[]) {
     assert(argv);  // At least empty
 
     int c;
-    char* user = NULL;
+    uid_t uid;
+    char* user;
     optopt = 0;
     while(true) {
         static struct option long_options[] = {
@@ -170,13 +173,22 @@ void eval(int argc, char* argv[]) {
         show_eval_help();
         exit(0);
     }
-    else if (optind < argc)
+    else if (optind < argc) {
         user = argv[optind];
-    else
-        die("No user given\n");
-
-    uid_t uid;
-    if (to_uid(user, &uid) == -1) die("No such user\n");
+        if (to_uid(user, &uid) == -1) {
+            if (errno != 0) errno_die("");
+            else die("No such user\n");
+        }
+    }
+    else {
+        uid = geteuid();
+        errno = 0;
+        struct passwd* pw = getpwuid(uid);
+        if (!pw) errno_die("Failed to get passwd record of effective uid");
+        user = pw->pw_name;
+    }
+    // pw->pw_name may be overwritten by another getpw* call, easier to dup argv too
+    user = strdup(user);
 
     struct dirent** class_files = NULL;
     int num_files = 0;
@@ -214,6 +226,7 @@ void eval(int argc, char* argv[]) {
         printf("No classes found for %s\n", user);
     else
         _print_class(props_list[index].filepath);
+    free(user);
     for (int i = 0; i < nprops; i++) destroy_class(&props_list[i]);
     free(props_list);
 }
