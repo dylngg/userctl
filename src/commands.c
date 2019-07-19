@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <dirent.h>
+#include <errno.h>
 #include <getopt.h>
 #include <libgen.h>
 #include <limits.h>

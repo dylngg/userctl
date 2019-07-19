@@ -16,13 +16,14 @@ void errno_die(char* quote);
 
 /*
  * Converts the username string to a uid, if it wasn't already. If the user
- * doesn't exist, returns -1.
+ * doesn't exist or if there is a error, returns -1. If errno is not zero a
+ * error occurred.
  */
 int to_uid(char* username, uid_t* uid);
 
 /*
  * Converts the groupname string to a gid, if it wasn't already. If the group
- * doesn't exist, returns -1.
+ * doesn't exist, returns -1. If errno is not zero a error occurred.
  */
 int to_gid(char* groupname, gid_t* gid);
 

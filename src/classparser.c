@@ -282,7 +282,7 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
     if (!pw) return -1;
 
     int ngroups = (int) sysconf(_SC_NGROUPS_MAX);
-    if (ngroups <= 0) return -1;
+    if (ngroups <= 0) ngroups = 65536;  // Good enough
     gid_t* groups = malloc(sizeof *groups * ngroups);
     if (groups == NULL) malloc_error_exit();
     if (getgrouplist(pw->pw_name, pw->pw_gid, groups, &ngroups) < 0)

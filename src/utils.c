@@ -1,9 +1,11 @@
 #include <ctype.h>
+#include <errno.h>
 #include <grp.h>
 #include <pwd.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 
 #include "utils.h"
@@ -21,6 +23,7 @@ void errno_die(char* quote) {
 }
 
 int to_uid(char* username, uid_t* uid) {
+    errno = 0;
     struct passwd* pw;
     if (_alldigits(username))
         pw = getpwuid((uid_t) strtoll(username, NULL, 10));
@@ -32,6 +35,7 @@ int to_uid(char* username, uid_t* uid) {
 }
 
 int to_gid(char* groupname, gid_t* gid) {
+    errno = 0;
     struct group* grp;
     if (_alldigits(groupname))
         grp = getgrgid((gid_t) strtoll(groupname, NULL, 10));
@@ -65,5 +69,5 @@ void trim_whitespace(char** string) {
 }
 
 void malloc_error_exit() {
-    errno_die("")
-};
+    errno_die("");
+}
