@@ -48,6 +48,17 @@ bool _alldigits(char* string) {
     return start != string;
 }
 
+void trim_whitespace(char** string) {
+    // Trim leading whitespace
+    while(isspace((unsigned char) **string)) (*string)++;
+    if(**string == '\0') return;  // ignore if all spaces
+
+    // Trip trailing whitespace
+    char* end = *string + strlen(*string) - 1;
+    while(end > *string && isspace((unsigned char) *end)) end--;
+    end[1] = '\0';
+}
+
 /*
  * Exits if there is a malloc issue.
  */
@@ -55,3 +66,4 @@ void malloc_error_exit() {
     perror("");
     exit(1);  // We need memory to function
 }
+

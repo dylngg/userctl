@@ -26,7 +26,6 @@ int _parse_line(char* line, char** restrict key, char** restrict value);
 int _insert_class_prop(ClassProperties* prop, char* restrict key, char* restrict value);
 void _parse_uids(char* string, ClassProperties* props);
 void _parse_gids(char* string, ClassProperties* props);
-void _trim_whitespace(char** string);
 void _print_line_error(unsigned long long linenum, const char* restrict filepath,
                        const char* restrict desc);
 int _class_ext(const struct dirent* dir);
@@ -110,8 +109,8 @@ int _parse_line(char* line, char** restrict key, char** restrict value) {
         // Either the line didn't have the delim, or there is no value or key
         return -1;
 
-    _trim_whitespace(key);
-    _trim_whitespace(value);
+    trim_whitespace(key);
+    trim_whitespace(value);
     return 0;
 }
 
@@ -181,7 +180,7 @@ void _parse_uids(char* string, ClassProperties* props) {
     char* token;
     unsigned int uid_count = 0;
     while ((token = strsep(&string, ",")) != NULL) {
-        _trim_whitespace(&token);
+        trim_whitespace(&token);
         if (to_uid(token, new_uids_list) == -1) {
             continue;
         }
@@ -217,7 +216,7 @@ void _parse_gids(char* string, ClassProperties* props) {
     char* token;
     unsigned int gid_count = 0;
     while ((token = strsep(&string, ",")) != NULL) {
-        _trim_whitespace(&token);
+        trim_whitespace(&token);
         if (to_gid(token, new_gids_list) == -1) continue;
         gid_count++;
         new_gids_list++;
@@ -228,22 +227,6 @@ void _parse_gids(char* string, ClassProperties* props) {
         props->groups = realloc(new_list, sizeof(*new_list) * (props->ngroups));
         if (props->groups == NULL) malloc_error_exit();
     }
-}
-
-/*
- * Moves the string pointer to after the leading whitespace and adds a null
- * terminator at the beginning of the trailing whitespace. Special care should
- * be taken to _not_ free the pointer returned (the pointer may have changed).
- */
-void _trim_whitespace(char** string) {
-    // Trim leading whitespace
-    while(isspace((unsigned char) **string)) (*string)++;
-    if(**string == '\0') return;  // ignore if all spaces
-
-    // Trip trailing whitespace
-    char* end = *string + strlen(*string) - 1;
-    while(end > *string && isspace((unsigned char) *end)) end--;
-    end[1] = '\0';
 }
 
 int write_classfile(const char* filepath, ClassProperties* props) {

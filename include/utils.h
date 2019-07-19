@@ -21,6 +21,13 @@ int to_uid(char* username, uid_t* uid);
 int to_gid(char* groupname, gid_t* gid);
 
 /*
+ * Moves the string pointer to after the leading whitespace and adds a NULL
+ * terminator at the beginning of the trailing whitespace. Special care should
+ * be taken to _not_ free the pointer returned (the pointer may have changed).
+ */
+void trim_whitespace(char** string);
+
+/*
  * Exits if there is a malloc issue.
  */
 void malloc_error_exit();
