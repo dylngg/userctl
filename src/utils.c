@@ -68,6 +68,19 @@ void trim_whitespace(char** string) {
     end[1] = '\0';
 }
 
+bool has_ext(char* restrict string, char* restrict ext) {
+    const char *ending = strrchr(string, '.');
+    // Want name + extension
+    return (ending != NULL && ending != string && strcmp(ending, ext) == 0);
+}
+
+bool valid_filename(char* filename) {
+    char bad_chars[] = "!@%^*~|/";
+    for (unsigned int i = 0; i < strlen(bad_chars); i++)
+        if (strchr(filename, bad_chars[i]) != NULL) return false;
+    return true;
+}
+
 void malloc_error_exit() {
     errno_die("");
 }

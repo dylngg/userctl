@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #include <sys/types.h>
+#include <stdbool.h>
 
 /*
  * Quotes last words into stderr and dies (with exit code of 1).
@@ -33,6 +34,16 @@ int to_gid(char* groupname, gid_t* gid);
  * be taken to _not_ free the pointer returned (the pointer may have changed).
  */
 void trim_whitespace(char** string);
+
+/*
+ * Returns whether the string ends in the given extension.
+ */
+bool has_ext(char* restrict string, char* restrict ext);
+
+/*
+ * Returns whether the filename is valid.
+ */
+bool valid_filename(char* filename);
 
 /*
  * Exits if there is a malloc issue.

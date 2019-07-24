@@ -28,7 +28,7 @@ void _parse_uids(char* string, ClassProperties* props);
 void _parse_gids(char* string, ClassProperties* props);
 void _print_line_error(unsigned long long linenum, const char* restrict filepath,
                        const char* restrict desc);
-int _class_ext(const struct dirent* dir);
+int _is_classfile(const struct dirent* dir);
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
 
 
@@ -247,7 +247,7 @@ void _print_line_error(unsigned long long linenum, const char* restrict filepath
 int list_class_files(struct dirent*** class_files, int* num_files) {
     assert(num_files != NULL);
 
-    int filecount = scandir(default_loc, class_files, _class_ext, alphasort);
+    int filecount = scandir(default_loc, class_files, _is_classfile, alphasort);
     if (filecount == -1) {
         *num_files = 0;
         class_files = NULL;
@@ -260,17 +260,13 @@ int list_class_files(struct dirent*** class_files, int* num_files) {
 /*
  * Returns 1 if extension matches the default, 0 otherwise.
  */
-int _class_ext(const struct dirent* dir) {
+int _is_classfile(const struct dirent* dir) {
     // Make sure is a regular ol' file
     // Also, allow unknown since not _all_ (but most) file systems support d_type
-    if(dir != NULL && (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN)) {
-        const char *ext = strrchr(dir->d_name, '.');
-
-        // Want name + extension
-        if(ext != NULL && ext != dir->d_name && strcmp(ext, default_ext) == 0)
-            return 1;
-    }
-    return 0;
+    if(dir != NULL && (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN))
+        return has_ext((char*) dir->d_name, (char*) default_ext);
+    else
+        return 0;
 }
 
 
