@@ -34,6 +34,15 @@ int to_uid(char* username, uid_t* uid) {
     return 0;
 }
 
+int to_username(uid_t uid, char** username) {
+    errno = 0;
+    struct passwd* pw;
+    pw = getpwuid(uid);
+    if (!pw) return -1;
+    *username = pw->pw_name;
+    return 0;
+}
+
 int to_gid(char* groupname, gid_t* gid) {
     errno = 0;
     struct group* grp;
@@ -43,6 +52,15 @@ int to_gid(char* groupname, gid_t* gid) {
         grp = getgrnam(groupname);
     if (!grp) return -1;
     *gid = grp->gr_gid;
+    return 0;
+}
+
+int to_groupname(gid_t gid, char** groupname) {
+    errno = 0;
+    struct group* grp;
+    grp = getgrgid(gid);
+    if (!grp) return -1;
+    *groupname = grp->gr_name;
     return 0;
 }
 

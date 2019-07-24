@@ -34,4 +34,15 @@ void eval(int argc, char* argv[]);
  */
 void show_eval_help();
 
+/*
+ * Prints the properties of the class. The users and groups fields contain
+ * only those who exist.
+ */
+void status(int argc, char* argv[]);
+
+/*
+ * Prints out the help for the status command.
+ */
+void show_status_help();
+
 #endif // COMMANDS_H

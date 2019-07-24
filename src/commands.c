@@ -3,8 +3,10 @@
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
+#include <grp.h>
 #include <libgen.h>
 #include <limits.h>
+#include <pwd.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,8 +19,13 @@
 #include "commands.h"
 #include "classparser.h"
 
+#define STATUS_INDENT 10
+
 char* _get_filepath(const char* restrict loc, char* restrict filename);
 void _print_class(char* filepath);
+void _print_class_status(ClassProperties* props, bool uids, bool gids);
+void _print_status_user_line(uid_t* users, int nusers, bool print_uids);
+void _print_status_group_line(gid_t* groups, int ngroups, bool print_gids);
 
 
 int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
@@ -95,7 +102,6 @@ void list(int argc, char* argv[]) {
         errno_die(error_msg);
     }
 
-    assert(class_files);
     for (int i = 0; i < num_files; i++) {
         if (class_files[i]) {
             char* filepath = _get_filepath(default_loc, class_files[i]->d_name);
@@ -239,3 +245,142 @@ void show_eval_help() {
     );
 }
 
+void status(int argc, char* argv[]) {
+    assert(argc >= 0);  // No negative args
+    assert(argv);  // At least empty
+
+    static int c, print_gids, print_uids;
+    optopt = 0;
+    while(true) {
+        static struct option long_options[] = {
+            {"uids", no_argument, &print_uids, 'u'},
+            {"gids", no_argument, &print_gids, 'g'},
+            {"help", no_argument, &help, 'h'},
+            {0}
+        };
+
+        int option_index = 0;
+        c = getopt_long(argc, argv, "ghu", long_options, &option_index);
+        if (c == -1) break;
+        switch(c) {
+            case 'u':
+                print_uids = 1;
+                break;
+            case 'g':
+                print_gids = 1;
+                break;
+            case 'h':
+                help = 1;
+                break;
+            default:
+                // Ignore weird things
+                continue;
+        }
+    }
+    if (optopt != 0)
+        exit(1);  // getopt already printed the error
+    else if (help) {
+        show_status_help();
+        exit(0);
+    }
+    else if (optind >= argc)
+        die("No class given\n");
+
+    char* classname = malloc(strlen(argv[optind]) + 1);
+    strcpy(classname, argv[optind]);
+    if (!valid_filename(classname)) die("Invalid classname given (no !@%^*~|/)\n");
+
+    // Use classname.class instead of classname if .class extension is not given
+    if (!has_ext(classname, (char*) default_ext)) {
+        size_t new_size = strlen(classname) + strlen(default_ext) + 1;
+        classname = realloc(classname, new_size);
+        if (!classname) malloc_error_exit();
+        strcat(classname, default_ext);
+    }
+    char* filepath = _get_filepath(default_loc, classname);
+    free(classname);
+
+    ClassProperties props_list;
+    if (parse_classfile(filepath, &props_list) == -1) exit(1);
+    _print_class_status(&props_list, print_uids, print_gids);
+
+    destroy_class(&props_list);
+    free(filepath);
+}
+
+/*
+ * Prints the properties of the class. The users and groups fields contain
+ * only those who exist.
+ */
+void _print_class_status(ClassProperties* props, bool print_uids, bool print_gids) {
+    _print_class(props->filepath);
+    _print_status_user_line(props->users, props->nusers, print_uids);
+    _print_status_group_line(props->groups, props->ngroups, print_gids);
+
+    char* shared_str = "false";
+    if (props->shared) shared_str = "true";
+    printf("%*s: %s\n", STATUS_INDENT, "Shared", shared_str);
+    printf("%*s: %f\n", STATUS_INDENT, "Priority", props->priority);
+}
+
+/*
+ * Prints the given users onto a line. If print_uids is true, the uids are not
+ * converted to usernames. If a user isn't valid, they are ignored.
+ */
+void _print_status_user_line(uid_t* users, int nusers, bool print_uids) {
+    printf("%*s: ", STATUS_INDENT, "Users");
+    char* username;
+    uid_t uid;
+    for (int i = 0; i < nusers; i++) {
+        uid = users[i];
+        if (print_uids) {
+            // Ignore invalid users
+            if (!getpwuid(uid)) continue;
+            printf("%llu", (unsigned long long) uid);
+        }
+        else {
+            // Ignore invalid users
+            if (to_username(uid, &username) == -1) continue;
+            printf("%s", username);
+        }
+        if (i != nusers - 1) printf(", ");
+    }
+    puts("");
+}
+
+
+/*
+ * Prints the given groups onto a line. If print_gids is true, the gids are
+ * not converted to groupnames. If a group isn't valid, they are ignored.
+ */
+void _print_status_group_line(gid_t* groups, int ngroups, bool print_gids) {
+    printf("%*s: ", STATUS_INDENT, "Groups");
+    char* groupname;
+    gid_t gid;
+    for (int i = 0; i < ngroups; i++) {
+        gid = groups[i];
+        if (print_gids) {
+            // Ignore invalid users
+            if (!getgrgid(gid)) continue;
+            printf("%llu", (unsigned long long) gid);
+        }
+        else {
+            // Ignore invalid users
+            if (to_groupname(gid, &groupname) == -1) continue;
+            printf("%s", groupname);
+        }
+        if (i != ngroups - 1) printf(", ");
+    }
+    puts("");
+}
+
+void show_status_help() {
+    printf(
+        "userctl status [OPTIONS...] [TARGET]\n\n"
+        "Prints the properties of the class. The users and groups fields contain only\n"
+        "those who exist.\n\n"
+        "  -u --uids\t\tShow uids rather than usernames\n"
+        "  -g --gids\t\tShow gids rather than groupnames\n"
+        "  -h --help\t\tShow this help\n"
+    );
+}
