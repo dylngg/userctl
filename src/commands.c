@@ -97,15 +97,14 @@ void list(int argc, char* argv[]) {
     if (list_class_files(&class_files, &num_files) != 0) {
         char error_msg[MSG_BUFSIZE];
         snprintf(error_msg, sizeof error_msg,
-                 "Error getting class files (%s/*%s)", default_path.dir,
-                 default_path.ext);
+                 "Error getting class files (%s/*%s)", default_loc,
+                 default_ext);
         errno_die(error_msg);
     }
 
     for (int i = 0; i < num_files; i++) {
         if (class_files[i]) {
-            char* filepath = _get_filepath(default_path.dir,
-                                           class_files[i]->d_name);
+            char* filepath = _get_filepath(default_loc, class_files[i]->d_name);
             _print_class(filepath);
             free(filepath);
             free(class_files[i]);
@@ -202,8 +201,8 @@ void eval(int argc, char* argv[]) {
     if (list_class_files(&class_files, &num_files) != 0) {
         char error_msg[MSG_BUFSIZE];
         snprintf(error_msg, sizeof error_msg,
-                 "Error getting class files (%s/*%s)", default_path.dir,
-                 default_path.ext);
+                 "Error getting class files (%s/*%s)", default_loc,
+                 default_ext);
         errno_die(error_msg);
     }
 
@@ -213,7 +212,7 @@ void eval(int argc, char* argv[]) {
     int nprops = 0;
     for (int i = 0; i < num_files; i++) {
         if (class_files[i]) {
-            char* filepath = _get_filepath(default_path.dir, class_files[i]->d_name);
+            char* filepath = _get_filepath(default_loc, class_files[i]->d_name);
             if (parse_classfile(filepath, &props_list[nprops]) != -1) nprops++;
             free(filepath);
             free(class_files[i]);
@@ -291,14 +290,14 @@ void status(int argc, char* argv[]) {
     strcpy(classname, argv[optind]);
     if (!valid_filename(classname)) die("Invalid classname given (no !@%^*~|/)\n");
 
-    // Use classname.ext instead of classname if extension is not given
-    if (!has_ext(classname, default_path.ext)) {
-        size_t new_size = strlen(classname) + strlen(default_path.ext) + 1;
+    // Use classname.class instead of classname if .class extension is not given
+    if (!has_ext(classname, (char*) default_ext)) {
+        size_t new_size = strlen(classname) + strlen(default_ext) + 1;
         classname = realloc(classname, new_size);
         if (!classname) malloc_error_exit();
-        strcat(classname, default_path.ext);
+        strcat(classname, default_ext);
     }
-    char* filepath = _get_filepath(default_path.dir, classname);
+    char* filepath = _get_filepath(default_loc, classname);
     free(classname);
 
     ClassProperties props_list;

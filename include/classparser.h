@@ -21,19 +21,14 @@ typedef struct {
     int ncontrols;
 } ClassProperties;
 
-typedef struct ClassPath {
-    char* dir;
-    char* name;
-    char* ext;
-}
-
-/* The default location of classes */
-extern ClassPath default_path;
-
 /*
  * Destroys the ClassProperties struct by deallocating things.
  */
 void destroy_class(ClassProperties* props);
+
+/* The default location of classes */
+extern const char* default_loc;
+extern const char* default_ext;
 
 /*
  * Parses a class file and passes a ClassProperties struct into props. If

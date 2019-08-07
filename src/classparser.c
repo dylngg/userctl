@@ -19,11 +19,8 @@
 #include "controller.h"
 #include "macros.h"
 
-ClassPath default_path = {
-    .dir = "/etc/userctl",
-    .name = "",
-    .ext = ".class"
-};
+const char* default_loc = "/etc/userctl";
+const char* default_ext = ".class";
 
 int _parse_line(char* line, char** restrict key, char** restrict value);
 int _insert_class_prop(ClassProperties* prop, char* restrict key, char* restrict value);
@@ -250,7 +247,7 @@ void _print_line_error(unsigned long long linenum, const char* restrict filepath
 int list_class_files(struct dirent*** class_files, int* num_files) {
     assert(num_files != NULL);
 
-    int filecount = scandir(default_path.dir, class_files, _is_classfile, alphasort);
+    int filecount = scandir(default_loc, class_files, _is_classfile, alphasort);
     if (filecount == -1) {
         *num_files = 0;
         class_files = NULL;
@@ -266,11 +263,10 @@ int list_class_files(struct dirent*** class_files, int* num_files) {
 int _is_classfile(const struct dirent* dir) {
     // Make sure is a regular ol' file
     // Also, allow unknown since not _all_ (but most) file systems support d_type
-    return (
-        dir != NULL &&
-        (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN) &&
-        has_ext((char*) dir->d_name, default_path.ext)
-    )
+    if(dir != NULL && (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN))
+        return has_ext((char*) dir->d_name, (char*) default_ext);
+    else
+        return 0;
 }
 
 
