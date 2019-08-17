@@ -64,6 +64,11 @@ bool has_ext(char* restrict string, char* restrict ext);
 bool valid_filename(char* filename);
 
 /*
+ * Returns a malloced filepath for the given filename at the given directory.
+ */
+char* get_filepath(const char* restrict dir, char* restrict filename);
+
+/*
  * Exits if there is a malloc issue.
  */
 void malloc_error_exit();

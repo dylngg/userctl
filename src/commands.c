@@ -21,7 +21,6 @@
 
 #define STATUS_INDENT 10
 
-char* _get_filepath(const char* restrict loc, char* restrict filename);
 void _print_class(char* filepath);
 void _print_class_status(ClassProperties* props, bool uids, bool gids);
 void _print_status_user_line(uid_t* users, int nusers, bool print_uids);
@@ -103,23 +102,13 @@ void list(int argc, char* argv[]) {
 
     for (int i = 0; i < num_files; i++) {
         if (class_files[i]) {
-            char* filepath = _get_filepath(default_loc, class_files[i]->d_name);
+            char* filepath = get_filepath(default_loc, class_files[i]->d_name);
             _print_class(filepath);
             free(filepath);
             free(class_files[i]);
         }
     }
     free(class_files);
-}
-
-/*
- * Returns a malloced filepath for the given filename at the given location.
- */
-char* _get_filepath(const char* restrict loc, char* restrict filename) {
-    char *filepath = malloc(strlen(loc) + strlen(filename) + 2);
-    if (!filepath) malloc_error_exit();
-    sprintf(filepath, "%s/%s", loc, filename);
-    return filepath;
 }
 
 /*
@@ -211,7 +200,7 @@ void eval(int argc, char* argv[]) {
     int nprops = 0;
     for (int i = 0; i < num_files; i++) {
         if (class_files[i]) {
-            char* filepath = _get_filepath(default_loc, class_files[i]->d_name);
+            char* filepath = get_filepath(default_loc, class_files[i]->d_name);
             if (parse_classfile(filepath, &props_list[nprops]) != -1) nprops++;
             free(filepath);
             free(class_files[i]);
@@ -296,7 +285,7 @@ void status(int argc, char* argv[]) {
         if (!classname) malloc_error_exit();
         strcat(classname, default_ext);
     }
-    char* filepath = _get_filepath(default_loc, classname);
+    char* filepath = get_filepath(default_loc, classname);
     free(classname);
 
     ClassProperties props_list;

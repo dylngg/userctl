@@ -99,6 +99,13 @@ bool valid_filename(char* filename) {
     return true;
 }
 
+char* get_filepath(const char* restrict loc, char* restrict filename) {
+    char *filepath = malloc(strlen(loc) + strlen(filename) + 2);
+    if (!filepath) malloc_error_exit();
+    sprintf(filepath, "%s/%s", loc, filename);
+    return filepath;
+}
+
 void malloc_error_exit() {
     errno_die("");
 }
