@@ -40,14 +40,13 @@ void destroy_class(ClassProperties* props) {
 }
 
 int parse_classfile(const char* filepath, ClassProperties* props) {
-    assert(filepath != NULL);
+    assert(filepath);
     memset(props, 0, sizeof *props);
-    props->filepath = malloc(strlen(filepath) + 1);
+    props->filepath = strdup(filepath);
     if (!props->filepath) malloc_error_exit();
-    strcpy(props->filepath, filepath);
 
-    FILE* classfile = fopen(props->filepath, "r");
-    if (classfile != NULL) {
+    FILE* classfile = fopen(filepath, "r");
+    if (classfile) {
         unsigned int linenum = 0;
         bool errors = false;
         char buf[LINE_BUFSIZE];
@@ -55,7 +54,7 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
         char* key;
         char* value;
 
-        while((end = fgets(buf, sizeof buf / sizeof *buf, classfile)) != NULL) {
+        while((end = fgets(buf, sizeof buf / sizeof *buf, classfile))) {
             if (linenum < UINT_MAX) linenum++;
 
             // Ignore blank lines
@@ -120,7 +119,7 @@ int _parse_line(char* line, char** restrict key, char** restrict value) {
  * returned and the properties is indeterminate.
  */
 int _insert_class_prop(ClassProperties* props, char* restrict key, char* restrict value) {
-    assert(props != NULL && key != NULL && value != NULL);
+    assert(props && key && value);
 
     if (strcasecmp(key, "shared") == 0) {
         if (strcasecmp(value, "true") == 0 || strcasecmp(value, "yes") == 0)
@@ -179,7 +178,7 @@ void _parse_uids(char* string, ClassProperties* props) {
 
     char* token;
     unsigned int uid_count = 0;
-    while ((token = strsep(&string, ",")) != NULL) {
+    while ((token = strsep(&string, ","))) {
         trim_whitespace(&token);
         if (to_uid(token, new_uids_list) == -1) {
             continue;
@@ -215,7 +214,7 @@ void _parse_gids(char* string, ClassProperties* props) {
 
     char* token;
     unsigned int gid_count = 0;
-    while ((token = strsep(&string, ",")) != NULL) {
+    while ((token = strsep(&string, ","))) {
         trim_whitespace(&token);
         if (to_gid(token, new_gids_list) == -1) continue;
         gid_count++;
@@ -230,8 +229,8 @@ void _parse_gids(char* string, ClassProperties* props) {
 }
 
 int write_classfile(const char* filepath, ClassProperties* props) {
-    assert(filepath != NULL);
-    assert(props != NULL);
+    assert(filepath);
+    assert(props);
     // TODO: Write the function
     return 0;
 }
@@ -264,17 +263,17 @@ int list_class_files(char* dir, char* ext, struct dirent*** class_files, int* nu
  * Returns 1 if extension matches the default, 0 otherwise.
  */
 int _is_classfile(const struct dirent* dir) {
-    // Make sure is a regular ol' file
-    // Also, allow unknown since not _all_ (but most) file systems support d_type
-    if(dir != NULL && (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN))
-        return has_ext((char*) dir->d_name, (char*) default_ext);
-    else
-        return 0;
+    return (
+        dir &&
+        // Allow unknown since not _all_ (but most) file systems support d_type
+        (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN) &&
+        has_ext((char*) dir->d_name, curr_ext)
+    );
 }
 
 
 int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
-    assert(props_list != NULL);
+    assert(props_list);
 
     errno = 0;
     struct passwd* pw = getpwuid(uid);
@@ -303,7 +302,7 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
  * Returns whether the user belongs in the class.
  */
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props) {
-    assert(props != NULL);
+    assert(props);
     for (int i = 0; i < props->nusers; i++)
         if (props->users[i] == uid) return true;
 

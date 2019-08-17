@@ -83,8 +83,7 @@ void list(int argc, char* argv[]) {
         }
     }
     // Abort, missing/wrong args
-    if (stop)
-        exit(1);
+    if (stop) exit(1);
 
     // Quit after help
     if (help) {
