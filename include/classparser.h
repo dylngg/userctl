@@ -53,7 +53,7 @@ int write_classfile(const char* filename, ClassProperties* props);
  * Note: dirent's d_type may be a DT_UNKNOWN. Do appropriate checks before
  * reading from it.
  */
-int list_class_files(struct dirent*** class_files, int* num_files);
+int list_class_files(char* dir, char* ext, struct dirent*** class_files, int* num_files);
 
 /*
  * Evaluates a user for what class they belong to. If there are multiple

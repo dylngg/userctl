@@ -2,24 +2,29 @@
 CC = gcc
 
 # userctl options
-CFLAGS += -std=c99 -O2 -Wall -Wextra -Wformat -Werror=implicit-function-declaration -Wformat-security -Werror=format-security -fstack-protector-strong -pedantic -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
+CFLAGS += -O2 -Wall -Wextra -Wformat -Werror=implicit-function-declaration -Wformat-security -Werror=format-security -fstack-protector-strong -pedantic -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
+LIBS += -lsystemd
 INCLUDE += -Iinclude
-EXE = userctl
 SRCDIR = src
 OBJDIR = obj
 SRC = $(wildcard $(SRCDIR)/*.c)
-OBJ = $(SRC:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
+# FIXME: When userctl only uses dbus to talk to userctld, want to remove classparser.o
+USERCTL_OBJ = $(OBJDIR)/userctl.o $(OBJDIR)/classparser.o $(OBJDIR)/utils.o $(OBJDIR)/commands.o $(OBJDIR)/controller.o
+USERCTLD_OBJ = $(OBJDIR)/userctld.o $(OBJDIR)/classparser.o $(OBJDIR)/utils.o $(OBJDIR)/controller.o
 
 .PHONY: all clean
 
-all: $(EXE)
+all: userctl userctld
 
-$(EXE): $(OBJ)
-	$(CC) -o $@ $(OBJ)
+userctl: $(USERCTL_OBJ)
+	$(CC) -o $@ $(USERCTL_OBJ) $(LIBS)
+
+userctld: $(USERCTLD_OBJ)
+	$(CC) -o $@ $(USERCTLD_OBJ) $(LIBS)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	mkdir -p $(OBJDIR)
 	$(CC) $(INCLUDE) $(CFLAGS) -c $< -o $@
 
 clean:
-	$(RM) $(OBJ)
+	$(RM) $(OBJDIR)/*

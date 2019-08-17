@@ -244,10 +244,13 @@ void _print_line_error(unsigned long long linenum, const char* restrict filepath
     fprintf(stderr, "%llu:%s %s\n", linenum, filepath, desc);
 }
 
-int list_class_files(struct dirent*** class_files, int* num_files) {
-    assert(num_files != NULL);
+static char* curr_ext = "";
 
-    int filecount = scandir(default_loc, class_files, _is_classfile, alphasort);
+int list_class_files(char* dir, char* ext, struct dirent*** class_files, int* num_files) {
+    assert(num_files);
+
+    curr_ext = ext;
+    int filecount = scandir(dir, class_files, _is_classfile, alphasort);
     if (filecount == -1) {
         *num_files = 0;
         class_files = NULL;
