@@ -5,7 +5,6 @@
 void show_help();
 
 int main(int argc, char* argv[]) {
-    // FIXME: Check if root or has correct capabilites
     static const Command cmds[] = {
 //        {"add-group", add_group}
 //        {"add-user", add_user},
@@ -25,7 +24,7 @@ int main(int argc, char* argv[]) {
 void show_help() {
     printf(
         "userctl {COMMAND} [OPTIONS...]\n\n"
-        "Sets configurable and persistent resource controls on users and groups.\n\n"
+        "Query or send commands to the userctld daemon.\n\n"
         "  -h --help\t\tShow this help.\n\n"
         "Commands:\n"
         "  list\t\t\tList the possible classes.\n"
