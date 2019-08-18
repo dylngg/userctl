@@ -89,14 +89,21 @@ void trim_whitespace(char** string) {
 bool has_ext(char* restrict string, char* restrict ext) {
     const char *ending = strrchr(string, '.');
     // Want name + extension
-    return (ending != NULL && ending != string && strcmp(ending, ext) == 0);
+    return (ending && ending != string && strcmp(ending, ext) == 0);
 }
 
 bool valid_filename(char* filename) {
     char bad_chars[] = "!@%^*~|/";
     for (unsigned int i = 0; i < strlen(bad_chars); i++)
-        if (strchr(filename, bad_chars[i]) != NULL) return false;
+        if (!strchr(filename, bad_chars[i])) return false;
     return true;
+}
+
+char* get_filepath(const char* restrict loc, char* restrict filename) {
+    char *filepath = malloc(strlen(loc) + strlen(filename) + 2);
+    if (!filepath) malloc_error_exit();
+    sprintf(filepath, "%s/%s", loc, filename);
+    return filepath;
 }
 
 void malloc_error_exit() {

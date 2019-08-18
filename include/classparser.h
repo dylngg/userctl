@@ -1,18 +1,27 @@
 #ifndef CLASSPARSER_H
 #define CLASSPARSER_H
 
+#include <dirent.h>
 #include <stdbool.h>
 #include <sys/types.h>
 #include <pwd.h>
 
-#include "controller.h"
+/* A resource control (systemd) */
+typedef struct ResourceControl {
+    char* key;
+    char* value;
+} ResourceControl;
 
+/*
+ * Destroys the ResourceControl struct by deallocating things.
+ */
+void destroy_control_list(ResourceControl* controls, int ncontrols);
 
 /* The properties of a class */
 typedef struct {
     char* filepath;
     bool shared;
-    float priority;
+    double priority;
     gid_t* groups;
     int ngroups;
     uid_t* users;
@@ -53,7 +62,7 @@ int write_classfile(const char* filename, ClassProperties* props);
  * Note: dirent's d_type may be a DT_UNKNOWN. Do appropriate checks before
  * reading from it.
  */
-int list_class_files(struct dirent*** class_files, int* num_files);
+int list_class_files(char* dir, char* ext, struct dirent*** class_files, int* num_files);
 
 /*
  * Evaluates a user for what class they belong to. If there are multiple

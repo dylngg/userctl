@@ -1,10 +1,9 @@
-#define _GNU_SOURCE
+#define _GNU_SOURCE  // (basename)
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
 #include <grp.h>
-#include <libgen.h>
 #include <limits.h>
 #include <pwd.h>
 #include <stdbool.h>
@@ -12,21 +11,33 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <systemd/sd-bus.h>
 #include <unistd.h>
 
 #include "macros.h"
 #include "utils.h"
 #include "commands.h"
-#include "classparser.h"
 
 #define STATUS_INDENT 10
 
-char* _get_filepath(const char* restrict loc, char* restrict filename);
-void _print_class(char* filepath);
-void _print_class_status(ClassProperties* props, bool uids, bool gids);
-void _print_status_user_line(uid_t* users, int nusers, bool print_uids);
-void _print_status_group_line(gid_t* groups, int ngroups, bool print_gids);
+typedef struct Class {
+    char* filepath;
+    bool shared;
+    double priority;
+    uint32_t* uids;
+    uint32_t* gids;
+} Class;
 
+void _print_class(char* filepath);
+void _print_class_status(Class* class, int nuids, int ngids, bool print_uids, bool print_gids);
+void _print_status_user_line(uint32_t* users, int nusers, bool print_uids);
+void _print_status_group_line(uint32_t* groups, int ngroups, bool print_gids);
+
+
+static const char* service_path = "/org/dylangardner/userctl";
+static const char* service_name = "org.dylangardner.userctl";
+static int help;
+static int stop;
 
 int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     assert(cmds);  // Make sure cmds is not null
@@ -53,18 +64,20 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     exit(1);
 }
 
-static int help;
-
 void list(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
-    int c;
-    bool stop = false;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    char** classes = NULL;
+    int c, r;
+
     while(true) {
         static struct option long_options[] = {
-          {"help", no_argument, &help, 1},
-          {0}
+            {"help", no_argument, &help, 1},
+            {0}
         };
 
         int option_index = 0;
@@ -75,68 +88,66 @@ void list(int argc, char* argv[]) {
                 help = 1;
                 break;
             case '?':
-                stop = true;
+                stop = 1;
                 break;
             default:
-                // Ignore weird things
                 continue;
         }
     }
-    // Abort, missing/wrong args
-    if (stop)
-        exit(1);
+    // Abort, missing/wrong args (getopt will print errors out)
+    if (stop) exit(1);
 
-    // Quit after help
     if (help) {
         show_list_help();
         exit(0);
     }
 
-    struct dirent** class_files = NULL;
-    int num_files = 0;
-    if (list_class_files(&class_files, &num_files) != 0) {
-        char error_msg[MSG_BUFSIZE];
-        snprintf(error_msg, sizeof error_msg,
-                 "Error getting class files (%s/*%s)", default_loc,
-                 default_ext);
-        errno_die(error_msg);
+    /* Connect to the system bus */
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto death;
     }
 
-    for (int i = 0; i < num_files; i++) {
-        if (class_files[i]) {
-            char* filepath = _get_filepath(default_loc, class_files[i]->d_name);
-            _print_class(filepath);
-            free(filepath);
-            free(class_files[i]);
-        }
+    r = sd_bus_call_method(
+        bus,
+        service_name,
+        service_path,
+        service_name,
+        "ListClasses",
+        &error,
+        &msg,
+        NULL
+    );
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to get classes from userctld %s\n",
+                error.message);
+        goto death;
     }
-    free(class_files);
-}
+    r = sd_bus_message_read_strv(msg, &classes);
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to parse classes from userctld %s\n",
+                strerror(-r));
+        goto death;
+    }
 
-/*
- * Returns a malloced filepath for the given filename at the given location.
- */
-char* _get_filepath(const char* restrict loc, char* restrict filename) {
-    char *filepath = malloc(strlen(loc) + strlen(filename) + 2);
-    if (!filepath) malloc_error_exit();
-    sprintf(filepath, "%s/%s", loc, filename);
-    return filepath;
+    for (int i = 0; classes[i] != NULL; i++) {
+        _print_class(classes[i]);
+        free(classes[i]);
+    }
+    free(classes);
+
+death:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
 }
 
 /*
  * Prints out the class.
  */
 void _print_class(char* filepath) {
-    // Some basename implementations destroy the string in the process
-    char* filepath_copy = strdup(filepath);
-    if (filepath_copy == NULL) {
-        perror("Error printing classes");
-        return;
-    }
-    char* base_name = basename(filepath);
-
-    printf("%s (%s)\n", base_name, filepath_copy);
-    free(filepath_copy);
+    // We're using GNU basename, which doesn't destroy the arg (string.h)
+    printf("%s (%s)\n", basename(filepath), filepath);
 }
 
 void show_list_help() {
@@ -151,10 +162,13 @@ void eval(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
-    int c;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    char* filepath;
+    int c, r;
     uid_t uid;
-    char* user;
-    optopt = 0;
+
     while(true) {
         static struct option long_options[] = {
             {"help", no_argument, &help, 1},
@@ -168,19 +182,23 @@ void eval(int argc, char* argv[]) {
             case 'h':
                 help = 1;
                 break;
+            case '?':
+                stop = 1;
+                break;
             default:
                 // Ignore weird things
                 continue;
         }
     }
-    if (optopt != 0)
-        exit(1);  // getopt already printed the error
-    else if (help) {
+    // Abort, missing/wrong args (getopt will print errors out)
+    if (stop) exit(1);
+
+    if (help) {
         show_eval_help();
         exit(0);
     }
     else if (optind < argc) {
-        user = argv[optind];
+        char* user = argv[optind];
         if (to_uid(user, &uid) == -1) {
             if (errno != 0) errno_die("");
             else die("No such user\n");
@@ -191,50 +209,40 @@ void eval(int argc, char* argv[]) {
         errno = 0;
         struct passwd* pw = getpwuid(uid);
         if (!pw) errno_die("Failed to get passwd record of effective uid");
-        user = pw->pw_name;
-    }
-    // pw->pw_name may be overwritten by another getpw* call, easier to dup argv too
-    user = strdup(user);
-
-    struct dirent** class_files = NULL;
-    int num_files = 0;
-    if (list_class_files(&class_files, &num_files) != 0) {
-        char error_msg[MSG_BUFSIZE];
-        snprintf(error_msg, sizeof error_msg,
-                 "Error getting class files (%s/*%s)", default_loc,
-                 default_ext);
-        errno_die(error_msg);
     }
 
-    assert(class_files);
-    ClassProperties* props_list = malloc(sizeof *props_list * num_files);
-    if (!props_list) malloc_error_exit();
-    int nprops = 0;
-    for (int i = 0; i < num_files; i++) {
-        if (class_files[i]) {
-            char* filepath = _get_filepath(default_loc, class_files[i]->d_name);
-            if (parse_classfile(filepath, &props_list[nprops]) != -1) nprops++;
-            free(filepath);
-            free(class_files[i]);
-        }
-    }
-    free(class_files);
-    if (nprops < num_files) {
-        ClassProperties* new_list = realloc(props_list, sizeof *new_list * nprops);
-        props_list = new_list;
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto death;
     }
 
-    int index = -1;
-    if (evaluate(uid, props_list, nprops, &index) == -1) {
-        errno_die("Error evaluating user");
+    r = sd_bus_call_method(
+        bus,
+        service_name,
+        service_path,
+        service_name,
+        "Evaluate",
+        &error,
+        &msg,
+        "u",
+        (uint32_t) uid
+    );
+    if (r < 0) {
+        fprintf(stderr, "%s\n", error.message);
+        goto death;
     }
-    if (index == -1)
-        printf("No classes found for %s\n", user);
-    else
-        _print_class(props_list[index].filepath);
-    free(user);
-    for (int i = 0; i < nprops; i++) destroy_class(&props_list[i]);
-    free(props_list);
+
+    r = sd_bus_message_read_basic(msg, 's', &filepath);
+    if (r < 0) {
+        fprintf(stderr, "Failed to parse class from userctld: %s\n", strerror(-r));
+        goto death;
+    }
+    _print_class(filepath);
+
+death:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
 }
 
 void show_eval_help() {
@@ -249,8 +257,14 @@ void status(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
-    static int c, print_gids, print_uids;
-    optopt = 0;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    char* classname = NULL;
+    Class class = {0};
+    static int c, r, print_gids, print_uids, nuids, ngids;
+    size_t uids_size, gids_size;
+
     while(true) {
         static struct option long_options[] = {
             {"uids", no_argument, &print_uids, 'u'},
@@ -272,77 +286,117 @@ void status(int argc, char* argv[]) {
             case 'h':
                 help = 1;
                 break;
+            case '?':
+                stop = 1;
+                break;
             default:
-                // Ignore weird things
                 continue;
         }
     }
-    if (optopt != 0)
-        exit(1);  // getopt already printed the error
-    else if (help) {
+    // Abort, missing/wrong args (getopt will print errors out)
+    if (stop) exit(1);
+
+    if (help) {
         show_status_help();
         exit(0);
     }
-    else if (optind >= argc)
+    if (optind >= argc)
         die("No class given\n");
+    classname = argv[optind];
 
-    char* classname = malloc(strlen(argv[optind]) + 1);
-    strcpy(classname, argv[optind]);
-    if (!valid_filename(classname)) die("Invalid classname given (no !@%^*~|/)\n");
-
-    // Use classname.class instead of classname if .class extension is not given
-    if (!has_ext(classname, (char*) default_ext)) {
-        size_t new_size = strlen(classname) + strlen(default_ext) + 1;
-        classname = realloc(classname, new_size);
-        if (!classname) malloc_error_exit();
-        strcat(classname, default_ext);
+    /* Connect to the system bus */
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto death;
     }
-    char* filepath = _get_filepath(default_loc, classname);
-    free(classname);
 
-    ClassProperties props_list;
-    if (parse_classfile(filepath, &props_list) == -1) exit(1);
-    _print_class_status(&props_list, print_uids, print_gids);
+    r = sd_bus_call_method(
+        bus,
+        service_name,
+        service_path,
+        service_name,
+        "GetClass",
+        &error,
+        &msg,
+        "s",
+        classname
+    );
+    if (r < 0) {
+        fprintf(stderr, "%s\n", error.message);
+        goto death;
+    }
+    r = sd_bus_message_read(
+        msg, "sbd",
+        &class.filepath,
+        &class.shared,
+        &class.priority
+    );
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to class status from userctl %s\n",
+                strerror(-r));
+        goto death;
+    }
 
-    destroy_class(&props_list);
-    free(filepath);
+    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.uids, &uids_size);
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to parse uids in class status from userctl %s\n",
+                strerror(-r));
+        goto death;
+    }
+    nuids = uids_size / sizeof(*class.uids);
+
+    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.gids, &gids_size);
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to parse gids in class status from userctl %s\n",
+                strerror(-r));
+        goto death;
+    }
+    ngids = gids_size / sizeof(*class.gids);
+    _print_class_status(&class, nuids, ngids, print_uids, print_gids);
+
+death:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
 }
 
 /*
  * Prints the properties of the class. The users and groups fields contain
  * only those who exist.
  */
-void _print_class_status(ClassProperties* props, bool print_uids, bool print_gids) {
-    _print_class(props->filepath);
-    _print_status_user_line(props->users, props->nusers, print_uids);
-    _print_status_group_line(props->groups, props->ngroups, print_gids);
+void _print_class_status(Class* class, int nuids, int ngids, bool print_uids, bool print_gids) {
+    _print_class(class->filepath);
+    _print_status_user_line(class->uids, nuids, print_uids);
+    _print_status_group_line(class->gids, ngids, print_gids);
 
-    char* shared_str = "false";
-    if (props->shared) shared_str = "true";
+    char* shared_str = (class->shared) ? "true": "false";
     printf("%*s: %s\n", STATUS_INDENT, "Shared", shared_str);
-    printf("%*s: %f\n", STATUS_INDENT, "Priority", props->priority);
+    printf("%*s: %lf\n", STATUS_INDENT, "Priority", class->priority);
 }
+
 
 /*
  * Prints the given users onto a line. If print_uids is true, the uids are not
  * converted to usernames. If a user isn't valid, they are ignored.
  */
-void _print_status_user_line(uid_t* users, int nusers, bool print_uids) {
+void _print_status_user_line(uint32_t* users, int nusers, bool print_uids) {
     printf("%*s: ", STATUS_INDENT, "Users");
     char* username;
     uid_t uid;
+
     for (int i = 0; i < nusers; i++) {
-        uid = users[i];
+        uid = (uid_t) users[i];
+
         if (print_uids) {
-            // Ignore invalid users
             if (!getpwuid(uid)) continue;
-            printf("%llu", (unsigned long long) uid);
+            printf("%lu", (unsigned long) uid);
         }
+
         else {
-            // Ignore invalid users
             if (to_username(uid, &username) == -1) continue;
             printf("%s", username);
         }
+
         if (i != nusers - 1) printf(", ");
     }
     puts("");
@@ -353,22 +407,26 @@ void _print_status_user_line(uid_t* users, int nusers, bool print_uids) {
  * Prints the given groups onto a line. If print_gids is true, the gids are
  * not converted to groupnames. If a group isn't valid, they are ignored.
  */
-void _print_status_group_line(gid_t* groups, int ngroups, bool print_gids) {
+void _print_status_group_line(uint32_t* groups, int ngroups, bool print_gids) {
     printf("%*s: ", STATUS_INDENT, "Groups");
     char* groupname;
     gid_t gid;
+
     for (int i = 0; i < ngroups; i++) {
-        gid = groups[i];
+        gid = (gid_t) groups[i];
+
         if (print_gids) {
             // Ignore invalid users
             if (!getgrgid(gid)) continue;
-            printf("%llu", (unsigned long long) gid);
+            printf("%lu", (unsigned long) gid);
         }
+
         else {
             // Ignore invalid users
             if (to_groupname(gid, &groupname) == -1) continue;
             printf("%s", groupname);
         }
+
         if (i != ngroups - 1) printf(", ");
     }
     puts("");
