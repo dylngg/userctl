@@ -17,7 +17,6 @@
 #include "macros.h"
 #include "utils.h"
 #include "commands.h"
-#include "classparser.h"
 
 #define STATUS_INDENT 10
 
@@ -163,10 +162,13 @@ void eval(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
-    int c;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    char* filepath;
+    int c, r;
     uid_t uid;
-    char* user;
-    optopt = 0;
+
     while(true) {
         static struct option long_options[] = {
             {"help", no_argument, &help, 1},
@@ -180,19 +182,23 @@ void eval(int argc, char* argv[]) {
             case 'h':
                 help = 1;
                 break;
+            case '?':
+                stop = 1;
+                break;
             default:
                 // Ignore weird things
                 continue;
         }
     }
-    if (optopt != 0)
-        exit(1);  // getopt already printed the error
-    else if (help) {
+    // Abort, missing/wrong args (getopt will print errors out)
+    if (stop) exit(1);
+
+    if (help) {
         show_eval_help();
         exit(0);
     }
     else if (optind < argc) {
-        user = argv[optind];
+        char* user = argv[optind];
         if (to_uid(user, &uid) == -1) {
             if (errno != 0) errno_die("");
             else die("No such user\n");
@@ -203,50 +209,40 @@ void eval(int argc, char* argv[]) {
         errno = 0;
         struct passwd* pw = getpwuid(uid);
         if (!pw) errno_die("Failed to get passwd record of effective uid");
-        user = pw->pw_name;
-    }
-    // pw->pw_name may be overwritten by another getpw* call, easier to dup argv too
-    user = strdup(user);
-
-    struct dirent** class_files = NULL;
-    int num_files = 0;
-    if (list_class_files(&class_files, &num_files) != 0) {
-        char error_msg[MSG_BUFSIZE];
-        snprintf(error_msg, sizeof error_msg,
-                 "Error getting class files (%s/*%s)", default_loc,
-                 default_ext);
-        errno_die(error_msg);
     }
 
-    assert(class_files);
-    ClassProperties* props_list = malloc(sizeof *props_list * num_files);
-    if (!props_list) malloc_error_exit();
-    int nprops = 0;
-    for (int i = 0; i < num_files; i++) {
-        if (class_files[i]) {
-            char* filepath = get_filepath(default_loc, class_files[i]->d_name);
-            if (parse_classfile(filepath, &props_list[nprops]) != -1) nprops++;
-            free(filepath);
-            free(class_files[i]);
-        }
-    }
-    free(class_files);
-    if (nprops < num_files) {
-        ClassProperties* new_list = realloc(props_list, sizeof *new_list * nprops);
-        props_list = new_list;
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto death;
     }
 
-    int index = -1;
-    if (evaluate(uid, props_list, nprops, &index) == -1) {
-        errno_die("Error evaluating user");
+    r = sd_bus_call_method(
+        bus,
+        service_name,
+        service_path,
+        service_name,
+        "Evaluate",
+        &error,
+        &msg,
+        "u",
+        (uint32_t) uid
+    );
+    if (r < 0) {
+        fprintf(stderr, "%s\n", error.message);
+        goto death;
     }
-    if (index == -1)
-        printf("No classes found for %s\n", user);
-    else
-        _print_class(props_list[index].filepath);
-    free(user);
-    for (int i = 0; i < nprops; i++) destroy_class(&props_list[i]);
-    free(props_list);
+
+    r = sd_bus_message_read_basic(msg, 's', &filepath);
+    if (r < 0) {
+        fprintf(stderr, "Failed to parse class from userctld: %s\n", strerror(-r));
+        goto death;
+    }
+    _print_class(filepath);
+
+death:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
 }
 
 void show_eval_help() {

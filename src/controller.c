@@ -1,6 +1,7 @@
 #define _GNU_SOURCE  // (basename)
 #include <errno.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -191,4 +192,38 @@ int _index_of_classname(ClassProperties* props_list, int nprops, char* classname
         if (strcmp(curr_name, classname) == 0) return i;
     }
     return -1;
+}
+
+int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
+    Context* context = userdata;
+    uint32_t uid;
+    sd_bus_message* reply = NULL;
+    int r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0) return r;
+
+    r = sd_bus_message_read(m, "u", &uid);
+    if (r < 0) goto death;
+
+    int index = -1;
+    if (sizeof(uid_t) != sizeof(uint32_t) && uid > UINT32_MAX) {
+        r = -EINVAL;
+        goto death;
+    }
+    r = evaluate((uid_t) uid, context->props_list, context->nprops, &index);
+    if (r < 0) goto death;
+    if (index < 0) {
+        sd_bus_error_setf(ret_error, "org.dylangardner.NoClassForUser",
+                          "No class found for the user.");
+        r = -EINVAL;
+        goto death;
+    }
+
+    char* classname = context->props_list[index].filepath;
+    r = sd_bus_message_append_basic(reply, 's', classname);
+    if (r < 0) goto death;
+    r = sd_bus_send(NULL, reply, NULL);
+
+death:
+    free(reply);
+    return r;
 }

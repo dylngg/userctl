@@ -11,6 +11,7 @@ void show_help();
 
 static const sd_bus_vtable userctld_vtable[] = {
     SD_BUS_VTABLE_START(0),
+    SD_BUS_METHOD("Evaluate", "u", "s", method_evaluate, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("GetClass", "s", "sbdauau", method_get_class, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("ListClasses", NULL, "as", method_list_classes, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_PROPERTY("DefaultPath", "s", NULL, offsetof(Context, classdir), 0),
