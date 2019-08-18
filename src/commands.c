@@ -127,7 +127,7 @@ void list(int argc, char* argv[]) {
     }
     r = sd_bus_message_read_strv(msg, &classes);
     if (r < 0) {
-        fprintf(stderr, "Internal error: Failed to parse classes from userctl %s\n",
+        fprintf(stderr, "Internal error: Failed to parse classes from userctld %s\n",
                 strerror(-r));
         goto death;
     }
@@ -268,7 +268,6 @@ void status(int argc, char* argv[]) {
     Class class = {0};
     static int c, r, print_gids, print_uids, nuids, ngids;
     size_t uids_size, gids_size;
-    optopt = 0;
 
     while(true) {
         static struct option long_options[] = {
@@ -343,7 +342,7 @@ void status(int argc, char* argv[]) {
         goto death;
     }
 
-    r = sd_bus_message_read_array(msg, 'u', &class.uids, &uids_size);
+    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.uids, &uids_size);
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse uids in class status from userctl %s\n",
                 strerror(-r));
@@ -351,7 +350,7 @@ void status(int argc, char* argv[]) {
     }
     nuids = uids_size / sizeof(*class.uids);
 
-    r = sd_bus_message_read_array(msg, 'u', &class.gids, &gids_size);
+    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.gids, &gids_size);
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse gids in class status from userctl %s\n",
                 strerror(-r));

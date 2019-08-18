@@ -107,9 +107,9 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     if (r < 0) return r;
 
     r = sd_bus_message_read(m, "s", &classname);
+    if (r < 0) goto death;
     classname = strdup(classname);
     if (!classname) goto death;
-    if (r < 0) goto death;
 
     // Use classname.class instead of classname if .class extension is not given
     if (!has_ext(classname, (char*) context->classext)) {
