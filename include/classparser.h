@@ -21,7 +21,7 @@ void destroy_control_list(ResourceControl* controls, int ncontrols);
 typedef struct {
     char* filepath;
     bool shared;
-    float priority;
+    double priority;
     gid_t* groups;
     int ngroups;
     uid_t* users;

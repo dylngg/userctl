@@ -1,5 +1,7 @@
+#define _GNU_SOURCE  // (basename)
 #include <errno.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -10,6 +12,7 @@
 #include "utils.h"
 
 int _load_props_list(char* dir, char* ext, ClassProperties** props_list, int* nprops);
+int _index_of_classname(ClassProperties* props_list, int nprops, char* classname);
 
 int init_context(Context* context) {
     context->classdir = strdup("/etc/userctl");
@@ -73,15 +76,119 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     Context* context = userdata;
     int nprops = context->nprops;
     char** classnames = malloc(sizeof *classnames * (nprops + 1));
-    if (!classnames) return -ENOMEM;
+    if (!classnames) {
+        r = -ENOMEM;
+        goto death;
+    }
     classnames[nprops] = NULL;
 
     for (int n = 0; n < nprops; n++)
         classnames[n] = context->props_list[n].filepath;
 
     r = sd_bus_message_append_strv(reply, classnames);
-    if (r < 0) return r;
+    free(classnames);
+    if (r < 0) goto death;
     r = sd_bus_send(NULL, reply, NULL);
+
+death:
     free(reply);
     return r;
+}
+
+int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+    Context* context = userdata;
+    sd_bus_message* reply = NULL;
+    char* classname;
+    int index, r;
+    size_t users_size, groups_size;
+    uint32_t* users, *groups;
+
+    r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0) return r;
+
+    r = sd_bus_message_read(m, "s", &classname);
+    classname = strdup(classname);
+    if (!classname) goto death;
+    if (r < 0) goto death;
+
+    // Use classname.class instead of classname if .class extension is not given
+    if (!has_ext(classname, (char*) context->classext)) {
+        size_t new_size = strlen(classname) + strlen(context->classext) + 1;
+        classname = realloc(classname, new_size);
+        if (!classname) {
+            free(reply);
+            return -ENOMEM;
+        }
+        strcat(classname, context->classext);
+    }
+
+    index = _index_of_classname(context->props_list, context->nprops, classname);
+    if (index < 0) {
+        sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
+                               "No such class found (may need to reload).");
+        r = -EINVAL;
+        goto death;
+    }
+    ClassProperties* props = &context->props_list[index];
+    r = sd_bus_message_append(
+        reply, "sbd",
+        props->filepath,
+        props->shared,
+        props->priority
+    );
+    if (r < 0) goto death;
+
+    // Modern Linux uses uint32_t for ids, to be safe we'll convert to uint32_t
+    // if needed.
+    users_size = sizeof(uid_t) * props->nusers;
+    users = props->users;
+    groups_size = sizeof(uid_t) * props->ngroups;
+    groups = props->groups;
+    if (sizeof(id_t) < sizeof(uint32_t)) {
+        users_size = sizeof(uint32_t) * props->nusers;
+        users = malloc(users_size);
+        if (!users) {
+            r = -ENOMEM;
+            goto death;
+        }
+        for (int i = 0; i < props->nusers; i++) users[i] = (uint32_t) props->users[i];
+
+        groups_size = sizeof(uint32_t) * props->ngroups;
+        groups = malloc(groups_size);
+        if (!groups) {
+            free(users);
+            r = -ENOMEM;
+            goto death;
+        }
+        for (int i = 0; i < props->ngroups; i++) groups[i] = (uint32_t) props->groups[i];
+    }
+
+    r = sd_bus_message_append_array(reply, 'u', users, users_size);
+    if (r < 0) goto late_death;
+    r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
+    if (r < 0) goto late_death;
+    r = sd_bus_send(NULL, reply, NULL);
+
+late_death:
+    free(users);
+    free(groups);
+
+death:
+    free(classname);
+    free(reply);
+    return r;
+}
+
+/*
+ * Returns the index at which the classname was found in the props_list, or -1
+ * if no class has that name.
+ */
+int _index_of_classname(ClassProperties* props_list, int nprops, char* classname) {
+    assert(props_list && classname);
+
+    for (int i = 0; i < nprops; i++) {
+        char* curr_name = basename(props_list[i].filepath);
+        if (strcmp(curr_name, classname) == 0) return i;
+    }
+    return -1;
 }

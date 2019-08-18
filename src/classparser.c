@@ -136,7 +136,7 @@ int _insert_class_prop(ClassProperties* props, char* restrict key, char* restric
             return -1;
     }
     else if (strcasecmp(key, "priority") == 0) {
-        props->priority = strtof(value, NULL);
+        props->priority = strtod(value, NULL);
         if (strcmp(value, "0") != 0 && props->priority == 0) return -1;
     }
     else if (strcasecmp(key, "groups") == 0) {
@@ -295,7 +295,7 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
     double highest_priority = -INFINITY;
     for (int i = 0; i < nprops; i++) {
         // Select first if same priority
-        if ((double) props_list[i].priority > highest_priority &&
+        if (props_list[i].priority > highest_priority &&
                 _in_class(uid, groups, ngroups, &props_list[i])) {
             highest_priority = props_list[i].priority;
             *index = i;

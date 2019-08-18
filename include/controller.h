@@ -37,4 +37,9 @@ int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
  */
 int method_list_classes(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
 
+/*
+ * Returns a class struct associated with the given classname.
+ */
+int method_get_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+
 #endif // CONTROLLER_H
