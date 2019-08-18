@@ -16,7 +16,6 @@
 
 #include "utils.h"
 #include "classparser.h"
-#include "controller.h"
 #include "macros.h"
 
 const char* default_loc = "/etc/userctl";
@@ -31,6 +30,13 @@ void _print_line_error(unsigned long long linenum, const char* restrict filepath
 int _is_classfile(const struct dirent* dir);
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
 
+void destroy_control_list(ResourceControl* controls, int ncontrols) {
+    for (int i = 0; i < ncontrols; i++) {
+        free(controls[i].key);
+        free(controls[i].value);
+    }
+    free(controls);
+}
 
 void destroy_class(ClassProperties* props) {
     free(props->filepath);

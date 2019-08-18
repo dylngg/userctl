@@ -1,10 +1,9 @@
-#define _GNU_SOURCE
+#define _GNU_SOURCE  // (basename)
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
 #include <grp.h>
-#include <libgen.h>
 #include <limits.h>
 #include <pwd.h>
 #include <stdbool.h>
@@ -12,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <systemd/sd-bus.h>
 #include <unistd.h>
 
 #include "macros.h"
@@ -26,6 +26,11 @@ void _print_class_status(ClassProperties* props, bool uids, bool gids);
 void _print_status_user_line(uid_t* users, int nusers, bool print_uids);
 void _print_status_group_line(gid_t* groups, int ngroups, bool print_gids);
 
+
+static const char* service_path = "/org/dylangardner/userctl";
+static const char* service_name = "org.dylangardner.userctl";
+static int help;
+static int stop;
 
 int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     assert(cmds);  // Make sure cmds is not null
@@ -52,14 +57,16 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
     exit(1);
 }
 
-static int help;
-
 void list(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
-    int c;
-    bool stop = false;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    char** classes = NULL;
+    int c, r;
+
     while(true) {
         static struct option long_options[] = {
           {"help", no_argument, &help, 1},
@@ -74,57 +81,66 @@ void list(int argc, char* argv[]) {
                 help = 1;
                 break;
             case '?':
-                stop = true;
+                stop = 1;
                 break;
             default:
-                // Ignore weird things
                 continue;
         }
     }
-    // Abort, missing/wrong args
+    // Abort, missing/wrong args (getopt will print errors out)
     if (stop) exit(1);
 
-    // Quit after help
     if (help) {
         show_list_help();
         exit(0);
     }
 
-    struct dirent** class_files = NULL;
-    int num_files = 0;
-    if (list_class_files(&class_files, &num_files) != 0) {
-        char error_msg[MSG_BUFSIZE];
-        snprintf(error_msg, sizeof error_msg,
-                 "Error getting class files (%s/*%s)", default_loc,
-                 default_ext);
-        errno_die(error_msg);
+    /* Connect to the system bus */
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto death;
     }
 
-    for (int i = 0; i < num_files; i++) {
-        if (class_files[i]) {
-            char* filepath = get_filepath(default_loc, class_files[i]->d_name);
-            _print_class(filepath);
-            free(filepath);
-            free(class_files[i]);
-        }
+    r = sd_bus_call_method(
+        bus,
+        service_name,
+        service_path,
+        service_name,
+        "ListClasses",
+        &error,
+        &msg,
+        NULL
+    );
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to get classes from userctld %s\n",
+                error.message);
+        goto death;
     }
-    free(class_files);
+    r = sd_bus_message_read_strv(msg, &classes);
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to parse classes from userctl %s\n",
+                strerror(-r));
+        goto death;
+    }
+
+    for (int i = 0; classes[i] != NULL; i++) {
+        _print_class(classes[i]);
+        free(classes[i]);
+    }
+    free(classes);
+
+death:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
 }
 
 /*
  * Prints out the class.
  */
 void _print_class(char* filepath) {
-    // Some basename implementations destroy the string in the process
-    char* filepath_copy = strdup(filepath);
-    if (filepath_copy == NULL) {
-        perror("Error printing classes");
-        return;
-    }
-    char* base_name = basename(filepath);
-
-    printf("%s (%s)\n", base_name, filepath_copy);
-    free(filepath_copy);
+    // We're using GNU basename, which doesn't destroy the arg (string.h)
+    printf("%s (%s)\n", basename(filepath), filepath);
 }
 
 void show_list_help() {

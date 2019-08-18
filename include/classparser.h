@@ -1,12 +1,21 @@
 #ifndef CLASSPARSER_H
 #define CLASSPARSER_H
 
+#include <dirent.h>
 #include <stdbool.h>
 #include <sys/types.h>
 #include <pwd.h>
 
-#include "controller.h"
+/* A resource control (systemd) */
+typedef struct ResourceControl {
+    char* key;
+    char* value;
+} ResourceControl;
 
+/*
+ * Destroys the ResourceControl struct by deallocating things.
+ */
+void destroy_control_list(ResourceControl* controls, int ncontrols);
 
 /* The properties of a class */
 typedef struct {
