@@ -25,11 +25,13 @@ typedef struct Class {
     bool shared;
     double priority;
     uint32_t* uids;
+    int nuids;
     uint32_t* gids;
+    int ngids;
 } Class;
 
 void _print_class(char* filepath);
-void _print_class_status(Class* class, int nuids, int ngids, bool print_uids, bool print_gids);
+void _print_class_status(Class* class, bool print_uids, bool print_gids);
 void _print_status_user_line(uint32_t* users, int nusers, bool print_uids);
 void _print_status_group_line(uint32_t* groups, int ngroups, bool print_gids);
 
@@ -262,7 +264,7 @@ void status(int argc, char* argv[]) {
     sd_bus* bus = NULL;
     char* classname = NULL;
     Class class = {0};
-    static int c, r, print_gids, print_uids, nuids, ngids;
+    static int c, r, print_gids, print_uids;
     size_t uids_size, gids_size;
 
     while(true) {
@@ -344,7 +346,7 @@ void status(int argc, char* argv[]) {
                 strerror(-r));
         goto death;
     }
-    nuids = uids_size / sizeof(*class.uids);
+    class.nuids =  uids_size / sizeof(*class.uids);
 
     r = sd_bus_message_read_array(msg, 'u', (const void**) &class.gids, &gids_size);
     if (r < 0) {
@@ -352,8 +354,8 @@ void status(int argc, char* argv[]) {
                 strerror(-r));
         goto death;
     }
-    ngids = gids_size / sizeof(*class.gids);
-    _print_class_status(&class, nuids, ngids, print_uids, print_gids);
+    class.ngids =  gids_size / sizeof(*class.gids);
+    _print_class_status(&class, print_uids, print_gids);
 
 death:
     sd_bus_error_free(&error);
@@ -364,10 +366,10 @@ death:
  * Prints the properties of the class. The users and groups fields contain
  * only those who exist.
  */
-void _print_class_status(Class* class, int nuids, int ngids, bool print_uids, bool print_gids) {
+void _print_class_status(Class* class, bool print_uids, bool print_gids) {
     _print_class(class->filepath);
-    _print_status_user_line(class->uids, nuids, print_uids);
-    _print_status_group_line(class->gids, ngids, print_gids);
+    _print_status_user_line(class->uids, class->nuids, print_uids);
+    _print_status_group_line(class->gids, class->ngids, print_gids);
 
     char* shared_str = (class->shared) ? "true": "false";
     printf("%*s: %s\n", STATUS_INDENT, "Shared", shared_str);
@@ -380,6 +382,8 @@ void _print_class_status(Class* class, int nuids, int ngids, bool print_uids, bo
  * converted to usernames. If a user isn't valid, they are ignored.
  */
 void _print_status_user_line(uint32_t* users, int nusers, bool print_uids) {
+    assert(users);
+
     printf("%*s: ", STATUS_INDENT, "Users");
     char* username;
     uid_t uid;
@@ -408,6 +412,8 @@ void _print_status_user_line(uint32_t* users, int nusers, bool print_uids) {
  * not converted to groupnames. If a group isn't valid, they are ignored.
  */
 void _print_status_group_line(uint32_t* groups, int ngroups, bool print_gids) {
+    assert(groups);
+
     printf("%*s: ", STATUS_INDENT, "Groups");
     char* groupname;
     gid_t gid;
