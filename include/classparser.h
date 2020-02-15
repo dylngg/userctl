@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 #ifndef CLASSPARSER_H
 #define CLASSPARSER_H
 

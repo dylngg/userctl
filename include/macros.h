@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 #ifndef MACROS_H
 #define MACROS_H
 

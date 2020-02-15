@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 #define _GNU_SOURCE  // (basename)
 #include <assert.h>
 #include <errno.h>
