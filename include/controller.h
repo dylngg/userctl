@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
 
