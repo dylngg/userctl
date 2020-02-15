@@ -27,4 +27,4 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	$(CC) $(INCLUDE) $(CFLAGS) -c $< -o $@
 
 clean:
-	$(RM) $(OBJDIR)/*
+	$(RM) $(OBJDIR)/* userctl userctld
