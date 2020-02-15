@@ -27,7 +27,8 @@ void show_help() {
         "Query or send commands to the userctld daemon.\n\n"
         "  -h --help\t\tShow this help.\n\n"
         "Commands:\n"
-        "  list\t\t\tList the possible classes.\n"
         "  eval\t\t\tEvaluates a user for what class they are in.\n"
+        "  list\t\t\tList the possible classes.\n"
+        "  status\t\tPrints the properties of the class.\n"
     );
 }
