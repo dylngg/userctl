@@ -1,13 +1,17 @@
+#include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <systemd/sd-bus.h>
 
 #include "controller.h"
 #include "utils.h"
 
 void show_help();
+static void* class_enforcer(void* vargp);
 
 static const sd_bus_vtable userctld_vtable[] = {
     SD_BUS_VTABLE_START(0),
@@ -19,21 +23,35 @@ static const sd_bus_vtable userctld_vtable[] = {
     SD_BUS_VTABLE_END
 };
 
+static const char* service_path = "/org/dylangardner/userctl";
+static const char* service_name = "org.dylangardner.userctl";
+
 int main(int argc, char* argv[]) {
+    pthread_t tid;
     sd_bus *bus = NULL;
+    int r;
 
     Context* context = malloc(sizeof *context);
     if (!context) malloc_error_exit();
     if (init_context(context) < 0)
         errno_die("Failed to initialize userctld");
 
-    int r = sd_bus_open_system(&bus);
+    pthread_rwlock_init(&context_lock, NULL);
+    // TODO: When reload() method functionality is implemented, we'll want to
+    // lock things on write.
+
+    r = pthread_create(&tid, NULL, class_enforcer, context);
+    if (r != 0) {
+        fprintf(stderr, "Failed to spawn off class enforcer: %s\n", strerror(r));
+        goto death;
+    }
+    pthread_detach(tid);
+
+    r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto death;
     }
-    const char* service_path = "/org/dylangardner/userctl";
-    const char* service_name = "org.dylangardner.userctl";
 
     r = sd_bus_add_object_vtable(
         bus,
@@ -70,11 +88,78 @@ int main(int argc, char* argv[]) {
     }
 
 death:
+    pthread_rwlock_destroy(&context_lock);
+    pthread_kill(tid, SIGKILL);
     destroy_context(context);
     free(context);
     sd_bus_unref(bus);
     return r < 0 ? 1 : 0;
 }
+
+/*
+ * Listens to signals on dbus for when to apply classes on users.
+ */
+static void* class_enforcer(void* vargp) {
+    assert(vargp);
+
+    sd_bus* bus = NULL;
+    sd_event* event = NULL;
+    int r;
+    Context* context = vargp;
+
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s", strerror(-r));
+        return NULL;
+    }
+
+    r = sd_event_default(&event);
+    if (r < 0) {
+        fprintf(stderr, "Failed to set default event: %s", strerror(-r));
+        goto death;
+    }
+
+    r = sd_bus_attach_event(bus, event, SD_EVENT_PRIORITY_NORMAL);
+    if (r < 0) {
+        fprintf(stderr, "Failed to attach event loop: %s", strerror(-r));
+        goto death;
+    }
+
+    const char* signal_match = (
+        "type='signal',"
+        "sender='org.freedesktop.login1',"
+        "path='/org/freedesktop/login1',"
+        "interface='org.freedesktop.login1.Manager',"
+        "member='UserNew'"
+    );
+
+    // In systemd 237+, sdbus has sd_bus_match_signal, but to remain
+    // compatible with older versions we just use sd_bus_match
+    r = sd_bus_add_match(
+        bus,
+        NULL,
+        signal_match,
+        match_user_new,
+        context
+    );
+
+    if (r < 0) {
+        fprintf(stderr, "Failed to watch for for new users: %s", strerror(-r));
+        goto death;
+    }
+
+    printf("Preparing to run event loop...\n");
+    r = sd_event_loop(event);
+    if (r < 0) {
+        fprintf(stderr, "Failed to run event loop: %s", strerror(-r));
+        goto death;
+    }
+
+death:
+    sd_bus_flush_close_unref(bus);
+    return NULL;
+}
+
 
 void show_help() {
     printf(
