@@ -289,6 +289,8 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
     int status, arglen;
     char *arg;
 
+    if (ncontrols < 1) return 0;
+
     int argc_prefix = 3;                              // systemctl + set-property + unit_name
     int argc = argc_prefix + ncontrols;               // + controls ...
     char **argv = malloc(sizeof *argv * (argc + 1));  // + NULL
