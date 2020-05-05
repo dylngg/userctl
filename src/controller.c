@@ -323,8 +323,20 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
         if (execv("/bin/systemctl", argv) == -1)
             errno_die("Failed to exec and set property");
     }
+
     waitpid(pid, &status, 0);
-    // FIXME: Properly wait and log things out
+    if (WIFEXITED(status)) {
+        if (WEXITSTATUS(status) == 0) goto death;
+
+        for (int i = 0; argv[i]; i++) fprintf(stderr, "%s ", argv[i]);
+        fprintf(stderr, "exited with non-zero status code: %d", WEXITSTATUS(status));
+    }
+    else if (WIFSIGNALED(status)) {
+        if (WTERMSIG(status) == 0) goto death;
+
+        for (int i = 0; argv[i]; i++) fprintf(stderr, "%s ", argv[i]);
+        fprintf(stderr, "recieved a signal: %s", strsignal(WTERMSIG(status)));
+    }
 
 death:
     for (int i = 0; i < ncontrols; i++) free(argv[argc_prefix + i]);
