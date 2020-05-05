@@ -234,7 +234,7 @@ int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) 
     pthread_rwlock_rdlock(&context_lock);
     r = evaluate((uid_t) uid, context->props_list, context->nprops, &index);
     if (r < 0) goto unlock_death;
-    if (index < 0) {
+    if (r == 0) {
         sd_bus_error_setf(ret_error, "org.dylangardner.NoClassForUser",
                           "No class found for the user.");
         r = -EINVAL;
@@ -268,7 +268,7 @@ int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     if (r < 0) goto death;
 
     // User has no class; ignore
-    if (index < 0) {
+    if (r == 0) {
         printf("%d belongs to no class. Ignoring.\n", uid);
         r = 0;
         goto death;
@@ -288,10 +288,12 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
     pid_t pid;
     int status, arglen;
     char *arg;
-    int nargs = 3;  // The actual count we've processed
-    int argc = 2 + ncontrols;  // set-property + unit_name + controls ...
-    char **argv = malloc(sizeof *argv * (argc + 1));;
+
+    int argc_prefix = 3;                              // systemctl + set-property + unit_name
+    int argc = argc_prefix + ncontrols;               // + controls ...
+    char **argv = malloc(sizeof *argv * (argc + 1));  // + NULL
     if (!argv) return -ENOMEM;
+
     argv[0] = "systemctl";
     argv[1] = "set-property";
     char unit_name[24];  // 32 bit uid can only be at most 11 chars long
@@ -306,7 +308,7 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
             goto death;
         }
         snprintf(arg, arglen, "%s=%s", controls[i].key, controls[i].value);
-        argv[nargs++] = arg;
+        argv[argc_prefix + i] = arg;
     }
     argv[argc] = NULL;
 
@@ -323,6 +325,6 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
     // FIXME: Properly wait and log things out
 
 death:
-    for (int i = 3; i < nargs; i++) free(argv[i]);
+    for (int i = 0; i < ncontrols; i++) free(argv[argc_prefix + i]);
     return r;
 }

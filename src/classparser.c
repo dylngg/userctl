@@ -294,15 +294,17 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
         return -1;
 
     double highest_priority = -INFINITY;
+    int props_match_count = 0;
     for (int i = 0; i < nprops; i++) {
         // Select first if same priority
         if (props_list[i].priority > highest_priority &&
                 _in_class(uid, groups, ngroups, &props_list[i])) {
             highest_priority = props_list[i].priority;
             *index = i;
+            props_match_count++;
         }
     }
-    return 0;
+    return props_match_count;
 }
 
 /*
