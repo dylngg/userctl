@@ -178,7 +178,7 @@ void _parse_uids(char* string, ClassProperties* props) {
 
     int* nusers = &props->nusers;
     uid_t* users = props->users;
-    uid_t* new_list = realloc(users, sizeof(*new_list) * (*nusers + comma_count));
+    uid_t* new_list = realloc(users, sizeof(*new_list) * (*nusers + comma_count + 1));
     if (new_list == NULL) malloc_error_exit();
     props->users = users = new_list;
     uid_t* new_uids_list = users + *nusers;
