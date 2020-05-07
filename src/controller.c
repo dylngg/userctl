@@ -117,7 +117,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     char* classname;
     int index, r;
     size_t users_size, groups_size;
-    uint32_t* users, *groups;
+    uid_t* users, *groups;
 
     r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0) return r;
@@ -162,25 +162,23 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     );
     if (r < 0) goto death;
 
-    // Modern Linux uses uint32_t for ids, to be safe we'll convert to uint32_t
-    // if needed.
-    users_size = sizeof(uid_t) * props->nusers;
+    users_size = sizeof *props->users * props->nusers;
     users = props->users;
-    groups_size = sizeof(uid_t) * props->ngroups;
+    groups_size = sizeof *props->groups * props->ngroups;
     groups = props->groups;
-    if (sizeof(id_t) < sizeof(uint32_t)) {
-        users_size = sizeof(uint32_t) * props->nusers;
-        users = malloc(users_size);
-        if (!users) {
-            r = -ENOMEM;
-            goto death;
-        }
-        for (int i = 0; i < props->nusers; i++) users[i] = (uint32_t) props->users[i];
 
-        groups_size = sizeof(uint32_t) * props->ngroups;
-        groups = malloc(groups_size);
-        if (!groups) {
-            free(users);
+    r = sd_bus_message_append_array(reply, 'u', users, users_size);
+    if (r < 0) goto death;
+    r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
+    if (r < 0) goto death;
+    r = sd_bus_send(NULL, reply, NULL);
+
+death:
+    pthread_rwlock_unlock(&context_lock);
+    free(classname);
+    free(reply);
+    return r;
+}
 
 int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
     Context* context = userdata;
@@ -275,11 +273,6 @@ int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) 
     if (r < 0) goto death;
 
     int index = -1;
-    if (sizeof(uid_t) != sizeof(uint32_t) && uid > UINT32_MAX) {
-        r = -EINVAL;
-        goto death;
-    }
-
     pthread_rwlock_rdlock(&context_lock);
     r = evaluate((uid_t) uid, context->props_list, context->nprops, &index);
     if (r < 0) goto unlock_death;
@@ -348,7 +341,7 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
     argv[0] = "systemctl";
     argv[1] = "set-property";
     char unit_name[24];  // 32 bit uid can only be at most 11 chars long
-    snprintf(unit_name, 24, "user-%u.slice", (uint32_t) uid);
+    snprintf(unit_name, 24, "user-%u.slice", uid);
     argv[2] = unit_name;
 
     for (int i = 0; i < ncontrols; i++) {

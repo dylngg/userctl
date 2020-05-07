@@ -25,16 +25,16 @@ typedef struct Class {
     char* filepath;
     bool shared;
     double priority;
-    uint32_t* uids;
+    uid_t* uids;
     int nuids;
-    uint32_t* gids;
+    uid_t* gids;
     int ngids;
 } Class;
 
 void _print_class(char* filepath);
 void _print_class_status(Class* class, bool print_uids, bool print_gids);
-void _print_status_user_line(uint32_t* users, int nusers, bool print_uids);
-void _print_status_group_line(uint32_t* groups, int ngroups, bool print_gids);
+void _print_status_user_line(uid_t* users, int nusers, bool print_uids);
+void _print_status_group_line(uid_t* groups, int ngroups, bool print_gids);
 
 
 static const char* service_path = "/org/dylangardner/userctl";
@@ -229,7 +229,7 @@ void eval(int argc, char* argv[]) {
         &error,
         &msg,
         "u",
-        (uint32_t) uid
+        (uid_t) uid
     );
     if (r < 0) {
         fprintf(stderr, "%s\n", error.message);
@@ -382,7 +382,7 @@ void _print_class_status(Class* class, bool print_uids, bool print_gids) {
  * Prints the given users onto a line. If print_uids is true, the uids are not
  * converted to usernames. If a user isn't valid, they are ignored.
  */
-void _print_status_user_line(uint32_t* users, int nusers, bool print_uids) {
+void _print_status_user_line(uid_t* users, int nusers, bool print_uids) {
     assert(users);
 
     printf("%*s: ", STATUS_INDENT, "Users");
@@ -412,7 +412,7 @@ void _print_status_user_line(uint32_t* users, int nusers, bool print_uids) {
  * Prints the given groups onto a line. If print_gids is true, the gids are
  * not converted to groupnames. If a group isn't valid, they are ignored.
  */
-void _print_status_group_line(uint32_t* groups, int ngroups, bool print_gids) {
+void _print_status_group_line(uid_t* groups, int ngroups, bool print_gids) {
     assert(groups);
 
     printf("%*s: ", STATUS_INDENT, "Groups");
