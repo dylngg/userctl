@@ -16,7 +16,7 @@ int main(int argc, char* argv[]) {
         {"list", list},
 //        {"set-property", set_property},
         {"status", status},
-//        {"reload", reload},
+        {"reload", reload},
         {0}
     };
     dispatch_cmd(argc, argv, cmds);

@@ -26,11 +26,6 @@ int init_context(Context* context);
 void destroy_context(Context* context);
 
 /*
- * Reloads the context.
- */
-int reload_context(Context* context);
-
-/*
  * Evaluates a uid for what class they are in.
  */
 int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
@@ -46,9 +41,9 @@ int method_list_classes(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
 int method_get_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
 
 /*
- * Returns the classname that the user belongs to.
+ * Reloads a class.
  */
-int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+int method_reload_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
 
 /*
  * Enforces a class on the new user.

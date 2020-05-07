@@ -39,10 +39,15 @@ void destroy_context(Context* context) {
     free(context->classext);
 }
 
-int reload_context(Context* context) {
-    if (context->props_list) free(context->props_list);
-    return _load_props_list(context->classdir, context->classext,
-                            &context->props_list, &context->nprops);
+/*
+ * Loads and initializes a class. If there was an issue loading a class, a
+ * -1 is return (and errno should be looked up), otherwise zero is returned.
+ */
+static int _load_class(char *dir, char *filename, ClassProperties *class) {
+    char* filepath = get_filepath(dir, filename);
+    int r = parse_classfile(filepath, class);
+    free(filepath);
+    return r;
 }
 
 /*
@@ -63,9 +68,7 @@ static int _load_props_list(char* dir, char* ext,  ClassProperties** props_list,
 
     for (int i = 0; i < num_files; i++) {
         if (class_files[i]) {
-            char* filepath = get_filepath(dir, class_files[i]->d_name);
-            if (parse_classfile(filepath, &list[n]) != -1) n++;
-            free(filepath);
+            if (_load_class(dir, class_files[i]->d_name, &list[n]) != -1) n++;
             free(class_files[i]);
         }
     }
@@ -178,25 +181,71 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
         groups = malloc(groups_size);
         if (!groups) {
             free(users);
-            r = -ENOMEM;
-            goto death;
-        }
-        for (int i = 0; i < props->ngroups; i++) groups[i] = (uint32_t) props->groups[i];
+
+int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+    Context* context = userdata;
+    sd_bus_message* reply = NULL;
+    char* classname;
+    int index, r;
+
+    r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0) return r;
+
+    r = sd_bus_message_read(m, "s", &classname);
+    if (r < 0) goto death;
+
+    classname = strdup(classname);
+    if (!classname) {
+        r = -ENOMEM;
+        goto death;
     }
 
-    r = sd_bus_message_append_array(reply, 'u', users, users_size);
-    if (r < 0) goto late_death;
-    r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
-    if (r < 0) goto late_death;
+    pthread_rwlock_wrlock(&context_lock);
+
+    // Use classname.class instead of classname if .class extension is not given
+    if (!has_ext(classname, (char*) context->classext)) {
+        size_t new_size = strlen(classname) + strlen(context->classext) + 1;
+        classname = realloc(classname, new_size);
+        if (!classname) {
+            r = -ENOMEM;
+            goto late_death;
+        }
+        strcat(classname, context->classext);
+    }
+
+    index = _index_of_classname(context->props_list, context->nprops, classname);
+    if (index < 0) {
+        sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
+                               "No such class found (may need to reload).");
+        r = -EINVAL;
+        goto late_death;
+    }
+
+    // Backup onto the stack just in case of failure
+    ClassProperties backup;
+    memcpy(&backup, &context->props_list[index], sizeof backup);
+
+    // Now try and modify that class
+    r = _load_class(context->classdir, classname, &context->props_list[index]);
+    if (r < 0) {
+        r = -errno;
+        memcpy(&context->props_list[index], &backup, sizeof backup);
+
+        // TODO: Return the error to the client
+        sd_bus_error_set_const(ret_error, "org.dylangardner.ClassFailure",
+                               "Class could not be loaded.");
+        r = -EINVAL;
+    }
+    else {
+        destroy_class(&backup);
+    }
     r = sd_bus_send(NULL, reply, NULL);
 
 late_death:
-    free(users);
-    free(groups);
-
-death:
     pthread_rwlock_unlock(&context_lock);
     free(classname);
+
+death:
     free(reply);
     return r;
 }

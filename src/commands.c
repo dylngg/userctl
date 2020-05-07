@@ -449,3 +449,80 @@ void show_status_help() {
         "  -h --help\t\tShow this help\n"
     );
 }
+
+void reload(int argc, char* argv[]) {
+    assert(argc >= 0);  // No negative args
+    assert(argv);  // At least empty
+
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    char* classname = NULL;
+    int c, r;
+
+    while(true) {
+        static struct option long_options[] = {
+            {"help", no_argument, &help, 'h'},
+            {0}
+        };
+
+        int option_index = 0;
+        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        if (c == -1) break;
+        switch(c) {
+            case 'h':
+                help = 1;
+                break;
+            case '?':
+                stop = 1;
+                break;
+            default:
+                continue;
+        }
+    }
+    // Abort, missing/wrong args (getopt will print errors out)
+    if (stop) exit(1);
+
+    if (help) {
+        show_reload_help();
+        exit(0);
+    }
+    if (optind >= argc)
+        die("No class given\n");
+    classname = argv[optind];
+
+    /* Connect to the system bus */
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto death;
+    }
+
+    r = sd_bus_call_method(
+        bus,
+        service_name,
+        service_path,
+        service_name,
+        "Reload",
+        &error,
+        &msg,
+        "s",
+        classname
+    );
+    if (r < 0) {
+        fprintf(stderr, "%s\n", error.message);
+        goto death;
+    }
+
+death:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
+}
+
+void show_reload_help() {
+    printf(
+        "userctl reload [OPTIONS...] [TARGET]\n\n"
+        "Reload the class.\n\n"
+        "  -h --help\t\tShow this help\n"
+    );
+}

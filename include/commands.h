@@ -46,4 +46,15 @@ void status(int argc, char* argv[]);
  */
 void show_status_help();
 
+/*
+ * Reloads the class.
+ */
+void reload(int argc, char* argv[]);
+
+/*
+ * Prints out the help for the reload command.
+ */
+void show_reload_help();
+
+
 #endif // COMMANDS_H
