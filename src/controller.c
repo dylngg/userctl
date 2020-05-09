@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0
-#define _GNU_SOURCE  // (basename)
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -18,8 +17,8 @@
 #include "controller.h"
 #include "utils.h"
 
-static int _load_props_list(char* dir, char* ext, ClassProperties** props_list, int* nprops);
-static int _index_of_classname(ClassProperties* props_list, int nprops, char* classname);
+static int _load_props_list(char* dir, char* ext, Vector* props_list);
+static bool _classname_finder(void *void_prop, va_list args);
 static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols);
 
 int init_context(Context* context) {
@@ -28,26 +27,22 @@ int init_context(Context* context) {
     if (!context->classdir || !context->classext) return -1;
     // FIXME: What if no /etc/userctl?
     return _load_props_list(context->classdir, context->classext,
-                            &context->props_list, &context->nprops);
+                            &context->props_list);
 }
 
 void destroy_context(Context* context) {
-    for (int i = 0; i < context->nprops; i++)
-        destroy_class(&context->props_list[i]);
-    free(context->props_list);
+    assert(context);
+
+    ClassProperties *props;
+    size_t nprops = get_vector_count(&context->props_list);
+
+    for (size_t n = 0; n < nprops; n++) {
+        props = get_vector_item(&context->props_list, n);
+        destroy_class(props);
+    }
+    destroy_vector(&context->props_list);
     free(context->classdir);
     free(context->classext);
-}
-
-/*
- * Loads and initializes a class. If there was an issue loading a class, a
- * -1 is return (and errno should be looked up), otherwise zero is returned.
- */
-static int _load_class(char *dir, char *filename, ClassProperties *class) {
-    char* filepath = get_filepath(dir, filename);
-    int r = parse_classfile(filepath, class);
-    free(filepath);
-    return r;
 }
 
 /*
@@ -56,39 +51,40 @@ static int _load_class(char *dir, char *filename, ClassProperties *class) {
  * files, a -1 is returned (and errno should be looked up), otherwise zero is
  * returned.
  */
-static int _load_props_list(char* dir, char* ext,  ClassProperties** props_list, int* nprops) {
-    assert(dir && ext && props_list && nprops);
+static int _load_props_list(char* dir, char* ext, Vector* props_list) {
+    assert(dir && ext && props_list);
     struct dirent** class_files = NULL;
-    int num_files = 0, n = 0;
+    int num_files = 0;
     if (list_class_files(dir, ext, &class_files, &num_files) < 0) return -1;
 
-    assert(class_files); // FIXME: What if no class files!
-    ClassProperties* list = malloc(sizeof *list * num_files);
-    if (!list) return -1;
+    assert(class_files);
+    assert(*class_files); // FIXME: What if no class files!
+
+    create_vector(props_list, sizeof (ClassProperties));
+    ensure_vector_capacity(props_list, num_files);
 
     for (int i = 0; i < num_files; i++) {
-        if (class_files[i]) {
-            if (_load_class(dir, class_files[i]->d_name, &list[n]) != -1) n++;
-            free(class_files[i]);
-        }
+        ClassProperties props;
+        if (create_class(dir, class_files[i]->d_name, &props) < 1)
+            append_vector_item(props_list, &props);
+
+        free(class_files[i]);
     }
     free(class_files);
-
-    if (n > 0 && n < num_files) list = realloc(list, sizeof *list * n);
-    *nprops = n;
-    *props_list = list;
     return 0;
 }
 
 int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+    Context* context = userdata;
     sd_bus_message* reply = NULL;
+
     int r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0) return r;
 
     pthread_rwlock_rdlock(&context_lock);
-    Context* context = userdata;
-    int nprops = context->nprops;
-    char** classnames = malloc(sizeof *classnames * (nprops + 1));
+    size_t nprops = get_vector_count(&context->props_list);
+
+    char** classnames = malloc(sizeof *classnames * (nprops + 1));  // + NULL
     if (!classnames) {
         pthread_rwlock_unlock(&context_lock);
         r = -ENOMEM;
@@ -96,12 +92,15 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     }
     classnames[nprops] = NULL;
 
-    for (int n = 0; n < nprops; n++)
-        classnames[n] = context->props_list[n].filepath;
+    for (size_t n = 0; n < nprops; n++) {
+        ClassProperties *props = get_vector_item(&context->props_list, n);
+        classnames[n] = props->filepath;
+    }
 
     pthread_rwlock_unlock(&context_lock);
     r = sd_bus_message_append_strv(reply, classnames);
     free(classnames);
+
     if (r < 0) goto death;
     r = sd_bus_send(NULL, reply, NULL);
 
@@ -115,7 +114,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     Context* context = userdata;
     sd_bus_message* reply = NULL;
     char* classname;
-    int index, r;
+    int r;
     size_t users_size, groups_size;
     uid_t* users, *groups;
 
@@ -146,21 +145,22 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
         strcat(classname, context->classext);
     }
 
-    index = _index_of_classname(context->props_list, context->nprops, classname);
-    if (index < 0) {
+    char *classpath = get_filepath(context->classdir, classname);
+    ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
+    if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
                                "No such class found (may need to reload).");
         r = -EINVAL;
-        goto death;
+        goto late_death;
     }
-    ClassProperties* props = &context->props_list[index];
+
     r = sd_bus_message_append(
         reply, "sbd",
         props->filepath,
         props->shared,
         props->priority
     );
-    if (r < 0) goto death;
+    if (r < 0) goto late_death;
 
     users_size = sizeof *props->users * props->nusers;
     users = props->users;
@@ -168,10 +168,13 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     groups = props->groups;
 
     r = sd_bus_message_append_array(reply, 'u', users, users_size);
-    if (r < 0) goto death;
+    if (r < 0) goto late_death;
     r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
-    if (r < 0) goto death;
+    if (r < 0) goto late_death;
     r = sd_bus_send(NULL, reply, NULL);
+
+late_death:
+    free(classpath);
 
 death:
     pthread_rwlock_unlock(&context_lock);
@@ -184,7 +187,7 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     Context* context = userdata;
     sd_bus_message* reply = NULL;
     char* classname;
-    int index, r;
+    int r;
 
     r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0) return r;
@@ -205,14 +208,16 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         size_t new_size = strlen(classname) + strlen(context->classext) + 1;
         classname = realloc(classname, new_size);
         if (!classname) {
+            pthread_rwlock_unlock(&context_lock);
             r = -ENOMEM;
-            goto late_death;
+            goto death;
         }
         strcat(classname, context->classext);
     }
 
-    index = _index_of_classname(context->props_list, context->nprops, classname);
-    if (index < 0) {
+    char *classpath = get_filepath(context->classdir, classname);
+    ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
+    if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
                                "No such class found (may need to reload).");
         r = -EINVAL;
@@ -221,18 +226,19 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
     // Backup onto the stack just in case of failure
     ClassProperties backup;
-    memcpy(&backup, &context->props_list[index], sizeof backup);
+    memcpy(&backup, props, sizeof backup);
 
     // Now try and modify that class
-    r = _load_class(context->classdir, classname, &context->props_list[index]);
+    r = create_class(context->classdir, classname, props);
     if (r < 0) {
         r = -errno;
-        memcpy(&context->props_list[index], &backup, sizeof backup);
+        memcpy(props, &backup, sizeof backup);
 
         // TODO: Return the error to the client
         sd_bus_error_set_const(ret_error, "org.dylangardner.ClassFailure",
                                "Class could not be loaded.");
         r = -EINVAL;
+        goto late_death;
     }
     else {
         destroy_class(&backup);
@@ -249,32 +255,32 @@ death:
 }
 
 /*
- * Returns the index at which the classname was found in the props_list, or -1
- * if no class has that name.
+ * Implements the vector finder interface for finding a classname, given as
+ * the second argument, in a vector of ClassProperties.
  */
-static int _index_of_classname(ClassProperties* props_list, int nprops, char* classname) {
-    assert(props_list && classname);
+static bool _classname_finder(void *void_prop, va_list args) {
+    assert(void_prop);
 
-    for (int i = 0; i < nprops; i++) {
-        char* curr_name = basename(props_list[i].filepath);
-        if (strcmp(curr_name, classname) == 0) return i;
-    }
-    return -1;
+    ClassProperties *props = void_prop;
+    char *classpath = va_arg(args, char *);
+    return strcmp(props->filepath, classpath) == 0;
 }
 
 int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     Context* context = userdata;
+    ClassProperties props;
     uid_t uid;
+    int r;
     sd_bus_message* reply = NULL;
-    int r = sd_bus_message_new_method_return(m, &reply);
+
+    r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0) return r;
 
     r = sd_bus_message_read(m, "u", &uid);
     if (r < 0) goto death;
 
-    int index = -1;
     pthread_rwlock_rdlock(&context_lock);
-    r = evaluate((uid_t) uid, context->props_list, context->nprops, &index);
+    r = evaluate(uid, &context->props_list, &props);
     if (r < 0) goto unlock_death;
     if (r == 0) {
         sd_bus_error_setf(ret_error, "org.dylangardner.NoClassForUser",
@@ -283,8 +289,7 @@ int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) 
         goto unlock_death;
     }
 
-    char* classname = context->props_list[index].filepath;
-    r = sd_bus_message_append_basic(reply, 's', classname);
+    r = sd_bus_message_append_basic(reply, 's', props.filepath);
     if (r < 0) goto unlock_death;
     r = sd_bus_send(NULL, reply, NULL);
 
@@ -298,7 +303,8 @@ death:
 
 int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     Context* context = userdata;
-    int r, index, ncontrols;
+    ClassProperties props;
+    int r;
     uid_t uid;
 
     r = sd_bus_message_read(m, "uo", &uid, NULL);
@@ -306,7 +312,7 @@ int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
 
     printf("Enforcing resource controls on %d\n", uid);
     pthread_rwlock_rdlock(&context_lock);
-    r = evaluate(uid, context->props_list, context->nprops, &index);
+    r = evaluate(uid, &context->props_list, &props);
     if (r < 0) goto death;
 
     // User has no class; ignore
@@ -315,9 +321,7 @@ int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
         r = 0;
         goto death;
     }
-    ResourceControl* controls = context->props_list[index].controls;
-    ncontrols = context->props_list[index].ncontrols;
-    r = _enforce_controls(uid, controls, ncontrols);
+    r = _enforce_controls(uid, props.controls, props.ncontrols);
 
 death:
     pthread_rwlock_unlock(&context_lock);

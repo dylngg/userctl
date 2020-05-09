@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "utils.h"
+#include "vector.h"
 #include "classparser.h"
 #include "macros.h"
 
@@ -46,8 +47,21 @@ void destroy_class(ClassProperties* props) {
     destroy_control_list(props->controls, props->ncontrols);
 }
 
+int create_class(char *dir, char *filename, ClassProperties *props) {
+    assert(dir);
+    assert(filename);
+    assert(props);
+
+    char* filepath = get_filepath(dir, filename);
+    int r = parse_classfile(filepath, props);
+
+    free(filepath);
+    return r;
+}
+
 int parse_classfile(const char* filepath, ClassProperties* props) {
     assert(filepath);
+    assert(props);
     memset(props, 0, sizeof *props);
     props->filepath = strdup(filepath);
     if (!props->filepath) malloc_error_exit();
@@ -279,8 +293,9 @@ int _is_classfile(const struct dirent* dir) {
 }
 
 
-int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
+int evaluate(uid_t uid, Vector *props_list, ClassProperties* props) {
     assert(props_list);
+    assert(props);
 
     errno = 0;
     struct passwd* pw = getpwuid(uid);
@@ -294,16 +309,22 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
         return -1;
 
     double highest_priority = -INFINITY;
-    int props_match_count = 0;
-    for (int i = 0; i < nprops; i++) {
+    int props_match_count = 0, choosen_index = -1;
+    size_t nprops = get_vector_count(props_list);
+    ClassProperties *tmp_props;
+
+    for (size_t n = 0; n < nprops; n++) {
+        tmp_props = get_vector_item(props_list, n);
+
         // Select first if same priority
-        if (props_list[i].priority > highest_priority &&
-                _in_class(uid, groups, ngroups, &props_list[i])) {
-            highest_priority = props_list[i].priority;
-            *index = i;
+        if (tmp_props->priority > highest_priority &&
+                _in_class(uid, groups, ngroups, tmp_props)) {
+            highest_priority = tmp_props->priority;
+            choosen_index = (int) n;
             props_match_count++;
         }
     }
+    if (choosen_index != -1) *props = *((ClassProperties *) get_vector_item(props_list, (size_t) choosen_index));
     return props_match_count;
 }
 
