@@ -9,8 +9,8 @@ SRCDIR = src
 OBJDIR = obj
 SRC = $(wildcard $(SRCDIR)/*.c)
 # FIXME: When userctl only uses dbus to talk to userctld, want to remove classparser.o
-USERCTL_OBJ = $(OBJDIR)/userctl.o $(OBJDIR)/utils.o $(OBJDIR)/commands.o
-USERCTLD_OBJ = $(OBJDIR)/userctld.o $(OBJDIR)/classparser.o $(OBJDIR)/utils.o $(OBJDIR)/controller.o
+USERCTL_OBJ = $(OBJDIR)/userctl.o $(OBJDIR)/utils.o $(OBJDIR)/commands.o $(OBJDIR)/vector.o
+USERCTLD_OBJ = $(OBJDIR)/userctld.o $(OBJDIR)/classparser.o $(OBJDIR)/utils.o $(OBJDIR)/controller.o $(OBJDIR)/vector.o
 
 .PHONY: all clean
 
