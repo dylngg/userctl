@@ -53,4 +53,11 @@ size_t get_vector_count(Vector *vec);
  */
 void *find_vector_item(Vector *vec, finder_t finder, ...);
 
+/*
+ * Creates a new single allocation array (ending in NULL) from the given
+ * vector. Returns -1 if there was an error (and errno should be looked up),
+ * otherwise 0.
+ */
+int convert_vector_to_array(Vector *vec, void **array, size_t *size);
+
 #endif // VECTOR_H

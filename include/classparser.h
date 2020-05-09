@@ -18,19 +18,16 @@ typedef struct ResourceControl {
 /*
  * Destroys the ResourceControl struct by deallocating things.
  */
-void destroy_control_list(ResourceControl* controls, int ncontrols);
+void destroy_control_list(ResourceControl* controls);
 
 /* The properties of a class */
 typedef struct {
     char* filepath;
     bool shared;
     double priority;
-    gid_t* groups;
-    int ngroups;
-    uid_t* users;
-    int nusers;
-    ResourceControl* controls;
-    int ncontrols;
+    Vector groups;
+    Vector users;
+    Vector controls;
 } ClassProperties;
 
 /*

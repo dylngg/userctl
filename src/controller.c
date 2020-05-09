@@ -16,10 +16,11 @@
 #include "classparser.h"
 #include "controller.h"
 #include "utils.h"
+#include "vector.h"
 
 static int _load_props_list(char* dir, char* ext, Vector* props_list);
 static bool _classname_finder(void *void_prop, va_list args);
-static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols);
+static int _enforce_controls(uid_t uid, Vector *controls);
 
 int init_context(Context* context) {
     context->classdir = strdup("/etc/userctl");
@@ -113,10 +114,10 @@ death:
 int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    char* classname;
+    char *classname;
     int r;
     size_t users_size, groups_size;
-    uid_t* users, *groups;
+    void *void_users, *void_groups;
 
     r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0) return r;
@@ -162,10 +163,12 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     );
     if (r < 0) goto late_death;
 
-    users_size = sizeof *props->users * props->nusers;
-    users = props->users;
-    groups_size = sizeof *props->groups * props->ngroups;
-    groups = props->groups;
+    r = convert_vector_to_array(&props->users, &void_users, &users_size);
+    if (r < 0) goto late_death;
+    uid_t *users = (uid_t *) void_users;
+    r = convert_vector_to_array(&props->groups, &void_groups, &groups_size);
+    if (r < 0) goto late_death;
+    gid_t *groups = (gid_t *) void_groups;
 
     r = sd_bus_message_append_array(reply, 'u', users, users_size);
     if (r < 0) goto late_death;
@@ -258,7 +261,7 @@ death:
  * Implements the vector finder interface for finding a classname, given as
  * the second argument, in a vector of ClassProperties.
  */
-static bool _classname_finder(void *void_prop, va_list args) {
+inline bool _classname_finder(void *void_prop, va_list args) {
     assert(void_prop);
 
     ClassProperties *props = void_prop;
@@ -321,7 +324,7 @@ int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
         r = 0;
         goto death;
     }
-    r = _enforce_controls(uid, props.controls, props.ncontrols);
+    r = _enforce_controls(uid, &props.controls);
 
 death:
     pthread_rwlock_unlock(&context_lock);
@@ -329,16 +332,17 @@ death:
     return r;
 }
 
-static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols) {
+static int _enforce_controls(uid_t uid, Vector *controls) {
     int r = 0;
     pid_t pid;
     int status, arglen;
     char *arg;
 
+    size_t ncontrols = get_vector_count(controls);
     if (ncontrols < 1) return 0;
 
-    int argc_prefix = 3;                              // systemctl + set-property + unit_name
-    int argc = argc_prefix + ncontrols;               // + controls ...
+    size_t argc_prefix = 3;                              // systemctl + set-property + unit_name
+    size_t argc = argc_prefix + ncontrols;               // + controls ...
     char **argv = malloc(sizeof *argv * (argc + 1));  // + NULL
     if (!argv) return -ENOMEM;
 
@@ -348,15 +352,16 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
     snprintf(unit_name, 24, "user-%u.slice", uid);
     argv[2] = unit_name;
 
-    for (int i = 0; i < ncontrols; i++) {
-        arglen = (strlen(controls[i].key) + strlen(controls[i].value) + 2);
+    for (size_t n = 0; n < ncontrols; n++) {
+        ResourceControl *control = get_vector_item(controls, n);
+        arglen = (strlen(control->key) + strlen(control->value) + 2);
         arg = malloc(sizeof *arg * arglen);
         if (!arg) {
             r = -ENOMEM;
             goto death;
         }
-        snprintf(arg, arglen, "%s=%s", controls[i].key, controls[i].value);
-        argv[argc_prefix + i] = arg;
+        snprintf(arg, arglen, "%s=%s", control->key, control->value);
+        argv[argc_prefix + n] = arg;
     }
     argv[argc] = NULL;
 
@@ -385,6 +390,6 @@ static int _enforce_controls(uid_t uid, ResourceControl* controls, int ncontrols
     }
 
 death:
-    for (int i = 0; i < ncontrols; i++) free(argv[argc_prefix + i]);
+    for (size_t n = 0; n < ncontrols; n++) free(argv[argc_prefix + n]);
     return r;
 }
