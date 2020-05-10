@@ -34,9 +34,15 @@ bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
 bool _uid_finder(void *void_uid, va_list args);
 bool _gids_finder(void *void_gid, va_list args);
 
-void destroy_control_list(ResourceControl* control) {
+void destroy_control(ResourceControl* control) {
     free(control->key);
     free(control->value);
+}
+
+void create_control(ResourceControl* control, char *key, char *value) {
+    control->key = strdup(key);
+    control->value = strdup(value);
+    if (!control->key || !control->value) malloc_error_exit();
 }
 
 void destroy_class(ClassProperties* props) {
@@ -48,7 +54,7 @@ void destroy_class(ClassProperties* props) {
 
     ncontrols = get_vector_count(&props->controls);
     for (size_t n = 0; n < ncontrols; n++)
-        destroy_control_list(get_vector_item(&props->controls, n));
+        destroy_control(get_vector_item(&props->controls, n));
     destroy_vector(&props->controls);
 }
 
@@ -171,9 +177,7 @@ int _insert_class_prop(ClassProperties* props, char* restrict key, char* restric
     else {
         // Assume it's a resource control
         ResourceControl control;
-        control.key = strdup(key);
-        control.value = strdup(value);
-        if (!control.key || !control.value) malloc_error_exit();
+        create_control(&control, key, value);
         append_vector_item(&props->controls, &control);
     }
     return 0;
@@ -283,6 +287,8 @@ int evaluate(uid_t uid, Vector *props_list, ClassProperties* props) {
             props_match_count++;
         }
     }
+    free(groups);
+
     if (choosen_index != -1) *props = *((ClassProperties *) get_vector_item(props_list, (size_t) choosen_index));
     return props_match_count;
 }

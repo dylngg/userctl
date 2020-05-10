@@ -18,7 +18,12 @@ typedef struct ResourceControl {
 /*
  * Destroys the ResourceControl struct by deallocating things.
  */
-void destroy_control_list(ResourceControl* controls);
+void destroy_control(ResourceControl* control);
+
+/*
+ * Creates a ResourceControl struct for the given key and value.
+ */
+void create_control(ResourceControl* control, char *key, char *value);
 
 /* The properties of a class */
 typedef struct {

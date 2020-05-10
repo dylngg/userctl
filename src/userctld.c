@@ -45,14 +45,14 @@ int main(int argc, char* argv[]) {
     r = pthread_create(&tid, NULL, class_enforcer, context);
     if (r != 0) {
         fprintf(stderr, "Failed to spawn off class enforcer: %s\n", strerror(r));
-        goto death;
+        goto cleanup;
     }
     pthread_detach(tid);
 
     r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_add_object_vtable(
@@ -65,31 +65,31 @@ int main(int argc, char* argv[]) {
     );
     if (r < 0) {
         fprintf(stderr, "Failed to issue method call: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_request_name(bus, service_name, 0);
     if (r < 0) {
         fprintf(stderr, "Failed to acquire service name: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     for (;;) {
         r = sd_bus_process(bus, NULL);
         if (r < 0) {
             fprintf(stderr, "Failed to process bus: %s\n", strerror(-r));
-            goto death;
+            goto cleanup;
         }
         if (r > 0) continue;
 
         r = sd_bus_wait(bus, (uint64_t) -1);
         if (r < 0) {
             fprintf(stderr, "Failed to wait on bus: %s\n", strerror(-r));
-            goto death;
+            goto cleanup;
         }
     }
 
-death:
+cleanup:
     pthread_rwlock_destroy(&context_lock);
     pthread_kill(tid, SIGKILL);
     destroy_context(context);
@@ -118,13 +118,13 @@ static void* class_enforcer(void* vargp) {
     r = sd_event_default(&event);
     if (r < 0) {
         fprintf(stderr, "Failed to set default event: %s", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_attach_event(bus, event, SD_EVENT_PRIORITY_NORMAL);
     if (r < 0) {
         fprintf(stderr, "Failed to attach event loop: %s", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     const char* signal_match = (
@@ -147,17 +147,17 @@ static void* class_enforcer(void* vargp) {
 
     if (r < 0) {
         fprintf(stderr, "Failed to watch for for new users: %s", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     printf("Preparing to run event loop...\n");
     r = sd_event_loop(event);
     if (r < 0) {
         fprintf(stderr, "Failed to run event loop: %s", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
-death:
+cleanup:
     sd_bus_flush_close_unref(bus);
     return NULL;
 }

@@ -109,7 +109,7 @@ void list(int argc, char* argv[]) {
     r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_call_method(
@@ -125,13 +125,13 @@ void list(int argc, char* argv[]) {
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to get classes from userctld %s\n",
                 error.message);
-        goto death;
+        goto cleanup;
     }
     r = sd_bus_message_read_strv(msg, &classes);
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse classes from userctld %s\n",
                 strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     for (int i = 0; classes[i] != NULL; i++) {
@@ -140,7 +140,7 @@ void list(int argc, char* argv[]) {
     }
     free(classes);
 
-death:
+cleanup:
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
 }
@@ -217,7 +217,7 @@ void eval(int argc, char* argv[]) {
     r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_call_method(
@@ -233,17 +233,17 @@ void eval(int argc, char* argv[]) {
     );
     if (r < 0) {
         fprintf(stderr, "%s\n", error.message);
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_message_read_basic(msg, 's', &filepath);
     if (r < 0) {
         fprintf(stderr, "Failed to parse class from userctld: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
     _print_class(filepath);
 
-death:
+cleanup:
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
 }
@@ -311,7 +311,7 @@ void status(int argc, char* argv[]) {
     r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_call_method(
@@ -327,7 +327,7 @@ void status(int argc, char* argv[]) {
     );
     if (r < 0) {
         fprintf(stderr, "%s\n", error.message);
-        goto death;
+        goto cleanup;
     }
     r = sd_bus_message_read(
         msg, "sbd",
@@ -338,14 +338,14 @@ void status(int argc, char* argv[]) {
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to class status from userctl %s\n",
                 strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_message_read_array(msg, 'u', (const void**) &class.uids, &uids_size);
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse uids in class status from userctl %s\n",
                 strerror(-r));
-        goto death;
+        goto cleanup;
     }
     class.nuids =  uids_size / sizeof(*class.uids);
 
@@ -353,12 +353,12 @@ void status(int argc, char* argv[]) {
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse gids in class status from userctl %s\n",
                 strerror(-r));
-        goto death;
+        goto cleanup;
     }
     class.ngids =  gids_size / sizeof(*class.gids);
     _print_class_status(&class, print_uids, print_gids);
 
-death:
+cleanup:
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
 }
@@ -495,7 +495,7 @@ void reload(int argc, char* argv[]) {
     r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
-        goto death;
+        goto cleanup;
     }
 
     r = sd_bus_call_method(
@@ -511,10 +511,10 @@ void reload(int argc, char* argv[]) {
     );
     if (r < 0) {
         fprintf(stderr, "%s\n", error.message);
-        goto death;
+        goto cleanup;
     }
 
-death:
+cleanup:
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
 }

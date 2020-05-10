@@ -83,13 +83,13 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     if (r < 0) return r;
 
     pthread_rwlock_rdlock(&context_lock);
-    size_t nprops = get_vector_count(&context->props_list);
 
+    size_t nprops = get_vector_count(&context->props_list);
     char** classnames = malloc(sizeof *classnames * (nprops + 1));  // + NULL
     if (!classnames) {
         pthread_rwlock_unlock(&context_lock);
         r = -ENOMEM;
-        goto death;
+        goto cleanup;
     }
     classnames[nprops] = NULL;
 
@@ -98,16 +98,17 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         classnames[n] = props->filepath;
     }
 
-    pthread_rwlock_unlock(&context_lock);
     r = sd_bus_message_append_strv(reply, classnames);
-    free(classnames);
-
-    if (r < 0) goto death;
+    if (r < 0) goto cleanup_classnames;
     r = sd_bus_send(NULL, reply, NULL);
 
-death:
-    free(reply);
+cleanup_classnames:
+    free(classnames);
+
+cleanup:
+    pthread_rwlock_unlock(&context_lock);
     sd_bus_error_set_errno(ret_error, r);
+    sd_bus_message_unrefp(&reply);
     return r;
 }
 
@@ -123,15 +124,10 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     if (r < 0) return r;
 
     r = sd_bus_message_read(m, "s", &classname);
-    if (r < 0) {
-        free(reply);
-        return r;
-    }
+    if (r < 0) goto cleanup;
+
     classname = strdup(classname);
-    if (!classname) {
-        free(reply);
-        return r;
-    }
+    if (!classname) goto cleanup;
 
     pthread_rwlock_rdlock(&context_lock);
 
@@ -141,7 +137,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
         classname = realloc(classname, new_size);
         if (!classname) {
             r = -ENOMEM;
-            goto death;
+            goto unlock_cleanup;
         }
         strcat(classname, context->classext);
     }
@@ -152,7 +148,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
                                "No such class found (may need to reload).");
         r = -EINVAL;
-        goto late_death;
+        goto unlock_cleanup_classpath;
     }
 
     r = sd_bus_message_append(
@@ -161,28 +157,37 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
         props->shared,
         props->priority
     );
-    if (r < 0) goto late_death;
+    if (r < 0) goto unlock_cleanup_classpath;
 
     r = convert_vector_to_array(&props->users, &void_users, &users_size);
-    if (r < 0) goto late_death;
+    if (r < 0) goto unlock_cleanup_classpath;
     uid_t *users = (uid_t *) void_users;
     r = convert_vector_to_array(&props->groups, &void_groups, &groups_size);
-    if (r < 0) goto late_death;
+    if (r < 0) goto unlock_cleanup_users;
     gid_t *groups = (gid_t *) void_groups;
 
     r = sd_bus_message_append_array(reply, 'u', users, users_size);
-    if (r < 0) goto late_death;
+    if (r < 0) goto unlock_cleanup_groups;
     r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
-    if (r < 0) goto late_death;
+    if (r < 0) goto unlock_cleanup_groups;
     r = sd_bus_send(NULL, reply, NULL);
 
-late_death:
+unlock_cleanup_groups:
+    free(groups);
+
+unlock_cleanup_users:
+    free(users);
+
+unlock_cleanup_classpath:
     free(classpath);
 
-death:
+unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
     free(classname);
-    free(reply);
+
+cleanup:
+    sd_bus_error_set_errno(ret_error, r);
+    sd_bus_message_unrefp(&reply);
     return r;
 }
 
@@ -196,12 +201,12 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     if (r < 0) return r;
 
     r = sd_bus_message_read(m, "s", &classname);
-    if (r < 0) goto death;
+    if (r < 0) goto cleanup;
 
     classname = strdup(classname);
     if (!classname) {
         r = -ENOMEM;
-        goto death;
+        goto cleanup;
     }
 
     pthread_rwlock_wrlock(&context_lock);
@@ -211,9 +216,8 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         size_t new_size = strlen(classname) + strlen(context->classext) + 1;
         classname = realloc(classname, new_size);
         if (!classname) {
-            pthread_rwlock_unlock(&context_lock);
             r = -ENOMEM;
-            goto death;
+            goto unlock_cleanup;
         }
         strcat(classname, context->classext);
     }
@@ -224,7 +228,7 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
                                "No such class found (may need to reload).");
         r = -EINVAL;
-        goto late_death;
+        goto unlock_cleanup_classpath;
     }
 
     // Backup onto the stack just in case of failure
@@ -236,24 +240,25 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     if (r < 0) {
         r = -errno;
         memcpy(props, &backup, sizeof backup);
-
-        // TODO: Return the error to the client
         sd_bus_error_set_const(ret_error, "org.dylangardner.ClassFailure",
                                "Class could not be loaded.");
-        r = -EINVAL;
-        goto late_death;
+        goto unlock_cleanup_classpath;
     }
     else {
         destroy_class(&backup);
     }
     r = sd_bus_send(NULL, reply, NULL);
 
-late_death:
+unlock_cleanup_classpath:
+    free(classpath);
+
+unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
     free(classname);
 
-death:
-    free(reply);
+cleanup:
+    sd_bus_error_set_errno(ret_error, r);
+    sd_bus_message_unrefp(&reply);
     return r;
 }
 
@@ -280,27 +285,28 @@ int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) 
     if (r < 0) return r;
 
     r = sd_bus_message_read(m, "u", &uid);
-    if (r < 0) goto death;
+    if (r < 0) goto cleanup;
 
     pthread_rwlock_rdlock(&context_lock);
     r = evaluate(uid, &context->props_list, &props);
-    if (r < 0) goto unlock_death;
+    if (r < 0) goto unlock_cleanup;
     if (r == 0) {
         sd_bus_error_setf(ret_error, "org.dylangardner.NoClassForUser",
                           "No class found for the user.");
         r = -EINVAL;
-        goto unlock_death;
+        goto unlock_cleanup;
     }
 
     r = sd_bus_message_append_basic(reply, 's', props.filepath);
-    if (r < 0) goto unlock_death;
+    if (r < 0) goto unlock_cleanup;
     r = sd_bus_send(NULL, reply, NULL);
 
-unlock_death:
+unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
-death:
-    free(reply);
+
+cleanup:
     sd_bus_error_set_errno(ret_error, r);
+    sd_bus_message_unrefp(&reply);
     return r;
 }
 
@@ -316,17 +322,17 @@ int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     printf("Enforcing resource controls on %d\n", uid);
     pthread_rwlock_rdlock(&context_lock);
     r = evaluate(uid, &context->props_list, &props);
-    if (r < 0) goto death;
+    if (r < 0) goto cleanup;
 
     // User has no class; ignore
     if (r == 0) {
         printf("%d belongs to no class. Ignoring.\n", uid);
         r = 0;
-        goto death;
+        goto cleanup;
     }
     r = _enforce_controls(uid, &props.controls);
 
-death:
+cleanup:
     pthread_rwlock_unlock(&context_lock);
     sd_bus_error_set_errno(ret_error, r);
     return r;
@@ -358,7 +364,8 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
         arg = malloc(sizeof *arg * arglen);
         if (!arg) {
             r = -ENOMEM;
-            goto death;
+            for (size_t m = 0; m < n; m++) free(arg);
+            goto cleanup;
         }
         snprintf(arg, arglen, "%s=%s", control->key, control->value);
         argv[argc_prefix + n] = arg;
@@ -368,7 +375,8 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
     pid = fork();
     if (pid == -1) {
         perror("Failed to fork and set property");
-        return -errno;
+        r = -errno;
+        goto exec_cleanup;
     }
     if (pid == 0) {
         if (execv("/bin/systemctl", argv) == -1)
@@ -377,19 +385,22 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
 
     waitpid(pid, &status, 0);
     if (WIFEXITED(status)) {
-        if (WEXITSTATUS(status) == 0) goto death;
+        if (WEXITSTATUS(status) == 0) goto exec_cleanup;
 
         for (int i = 0; argv[i]; i++) fprintf(stderr, "%s ", argv[i]);
         fprintf(stderr, "exited with non-zero status code: %d", WEXITSTATUS(status));
     }
     else if (WIFSIGNALED(status)) {
-        if (WTERMSIG(status) == 0) goto death;
+        if (WTERMSIG(status) == 0) goto exec_cleanup;
 
         for (int i = 0; argv[i]; i++) fprintf(stderr, "%s ", argv[i]);
         fprintf(stderr, "recieved a signal: %s", strsignal(WTERMSIG(status)));
     }
 
-death:
+exec_cleanup:
     for (size_t n = 0; n < ncontrols; n++) free(argv[argc_prefix + n]);
+
+cleanup:
+    free(argv);
     return r;
 }
