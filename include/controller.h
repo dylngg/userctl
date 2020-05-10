@@ -45,6 +45,11 @@ int method_get_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_error)
 int method_reload_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
 
 /*
+ * Reloads the daemon.
+ */
+int method_daemon_reload(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+
+/*
  * Enforces a class on the new user.
  */
 int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *error);

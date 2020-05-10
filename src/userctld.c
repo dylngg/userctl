@@ -20,6 +20,7 @@ static const sd_bus_vtable userctld_vtable[] = {
     SD_BUS_METHOD("GetClass", "s", "sbdauau", method_get_class, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("ListClasses", NULL, "as", method_list_classes, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Reload", "s", NULL, method_reload_class, 0),
+    SD_BUS_METHOD("DaemonReload", NULL, NULL, method_daemon_reload, 0),
     SD_BUS_PROPERTY("DefaultPath", "s", NULL, offsetof(Context, classdir), 0),
     SD_BUS_PROPERTY("DefaultExtension", "s", NULL, offsetof(Context, classext), 0),
     SD_BUS_VTABLE_END
@@ -35,7 +36,7 @@ int main(int argc, char* argv[]) {
 
     Context* context = malloc(sizeof *context);
     if (!context) malloc_error_exit();
-    if (init_context(context) < 0)
+    if ((init_context(context)) < 0)
         errno_die("Failed to initialize userctld");
 
     pthread_rwlock_init(&context_lock, NULL);

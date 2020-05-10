@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
 //        {"set-property", set_property},
         {"status", status},
         {"reload", reload},
+        {"daemon-reload", daemon_reload},
         {0}
     };
     dispatch_cmd(argc, argv, cmds);
@@ -31,5 +32,7 @@ void show_help() {
         "  eval\t\t\tEvaluates a user for what class they are in.\n"
         "  list\t\t\tList the possible classes.\n"
         "  status\t\tPrints the properties of the class.\n"
+        "  reload\t\tReload the class.\n"
+        "  daemon-reload\t\tReload the daemon.\n"
     );
 }

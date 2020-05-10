@@ -56,5 +56,15 @@ void reload(int argc, char* argv[]);
  */
 void show_reload_help();
 
+/*
+ * Reloads the daemon.
+ */
+void daemon_reload(int argc, char* argv[]);
+
+/*
+ * Prints out the help for the daemon-reload command.
+ */
+void show_daemon_reload_help();
+
 
 #endif // COMMANDS_H

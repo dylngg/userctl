@@ -146,7 +146,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
-                               "No such class found (may need to reload).");
+                               "No such class found (may need to daemon-reload).");
         r = -EINVAL;
         goto unlock_cleanup_classpath;
     }
@@ -226,7 +226,7 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
-                               "No such class found (may need to reload).");
+                               "No such class found (may need to daemon-reload).");
         r = -EINVAL;
         goto unlock_cleanup_classpath;
     }
@@ -272,6 +272,38 @@ inline bool _classname_finder(void *void_prop, va_list args) {
     ClassProperties *props = void_prop;
     char *classpath = va_arg(args, char *);
     return strcmp(props->filepath, classpath) == 0;
+}
+
+int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+    Context* context = userdata;
+    sd_bus_message* reply = NULL;
+    int r;
+
+    r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0) return r;
+
+    pthread_rwlock_wrlock(&context_lock);
+
+    Context backup;
+    memcpy(&backup, context, sizeof backup);
+
+    if ((init_context(context)) < 0) {
+        r = -errno;
+        memcpy(context, &backup, sizeof backup);
+        sd_bus_error_set_const(ret_error, "org.dylangardner.DaemonFailure",
+                                          "Daemon could not be loaded.");
+        goto unlock_cleanup;
+    }
+    else {
+        destroy_context(&backup);
+    }
+    r = sd_bus_send(NULL, reply, NULL);
+
+unlock_cleanup:
+    pthread_rwlock_unlock(&context_lock);
+    sd_bus_error_set_errno(ret_error, r);
+    sd_bus_message_unrefp(&reply);
+    return r;
 }
 
 int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
