@@ -4,11 +4,10 @@
 
 #include <systemd/sd-bus.h>
 
-#include "classparser.h"
+#include "vector.h"
 
 typedef struct Context {
-    ClassProperties* props_list;
-    int nprops;
+    Vector props_list;
     char* classdir;
     char* classext;
 } Context;

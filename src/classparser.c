@@ -14,8 +14,10 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "utils.h"
+#include "vector.h"
 #include "classparser.h"
 #include "macros.h"
 
@@ -24,33 +26,53 @@ const char* default_ext = ".class";
 
 int _parse_line(char* line, char** restrict key, char** restrict value);
 int _insert_class_prop(ClassProperties* prop, char* restrict key, char* restrict value);
-void _parse_uids(char* string, ClassProperties* props);
-void _parse_gids(char* string, ClassProperties* props);
+void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid);
 void _print_line_error(unsigned long long linenum, const char* restrict filepath,
                        const char* restrict desc);
 int _is_classfile(const struct dirent* dir);
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
+bool _uid_finder(void *void_uid, va_list args);
+bool _gids_finder(void *void_gid, va_list args);
 
-void destroy_control_list(ResourceControl* controls, int ncontrols) {
-    for (int i = 0; i < ncontrols; i++) {
-        free(controls[i].key);
-        free(controls[i].value);
-    }
-    free(controls);
+void destroy_control_list(ResourceControl* control) {
+    free(control->key);
+    free(control->value);
 }
 
 void destroy_class(ClassProperties* props) {
+    size_t ncontrols;
+
     free(props->filepath);
-    free(props->users);
-    free(props->groups);
-    destroy_control_list(props->controls, props->ncontrols);
+    destroy_vector(&props->users);
+    destroy_vector(&props->groups);
+
+    ncontrols = get_vector_count(&props->controls);
+    for (size_t n = 0; n < ncontrols; n++)
+        destroy_control_list(get_vector_item(&props->controls, n));
+    destroy_vector(&props->controls);
+}
+
+int create_class(char *dir, char *filename, ClassProperties *props) {
+    assert(dir);
+    assert(filename);
+    assert(props);
+
+    char* filepath = get_filepath(dir, filename);
+    int r = parse_classfile(filepath, props);
+
+    free(filepath);
+    return r;
 }
 
 int parse_classfile(const char* filepath, ClassProperties* props) {
     assert(filepath);
+    assert(props);
     memset(props, 0, sizeof *props);
     props->filepath = strdup(filepath);
     if (!props->filepath) malloc_error_exit();
+    if ((create_vector(&props->users, sizeof (uid_t))) < 0) return -1;
+    if ((create_vector(&props->groups, sizeof (gid_t))) < 0) return -1;
+    if ((create_vector(&props->controls, sizeof (ResourceControl))) < 0) return -1;
 
     FILE* classfile = fopen(filepath, "r");
     if (classfile) {
@@ -141,97 +163,48 @@ int _insert_class_prop(ClassProperties* props, char* restrict key, char* restric
         if (strcmp(value, "0") != 0 && props->priority == 0) return -1;
     }
     else if (strcasecmp(key, "groups") == 0) {
-        _parse_gids(value, props);
+        _parse_uids_or_gids(value, props, false);
     }
     else if (strcasecmp(key, "users") == 0) {
-        _parse_uids(value, props);
+        _parse_uids_or_gids(value, props, true);
     }
     else {
         // Assume it's a resource control
-        int n = props->ncontrols;
-        ResourceControl* controls = realloc(props->controls,
-                                            sizeof *controls * (n + 1));
-        if (!controls) malloc_error_exit();
-        props->controls = controls;
-
-        controls[n].key = malloc(strlen(key) + 1);
-        controls[n].value = malloc(strlen(value) + 1);
-        if (!controls[n].key || !controls[n].value) malloc_error_exit();
-        strcpy(controls[n].key, key);
-        strcpy(controls[n].value, value);
-
-        props->ncontrols++;
+        ResourceControl control;
+        control.key = strdup(key);
+        control.value = strdup(value);
+        if (!control.key || !control.value) malloc_error_exit();
+        append_vector_item(&props->controls, &control);
     }
     return 0;
 }
 
 /*
- * Parses uids or usernames out of the string, separated by commas, stripping
- * extra whitespace and transforming usernames to uids. The uids are then put
- * in a malloced list. If the list is not NULL, the contents of the list are
- * copied into a new list. If a username doesn't have a corresponding uid, or
- * if the uid is not valid, it is skipped.
+ * Parses uids or usernames out of the string if uid_or_gid is true, otherwise
+ * parses gids or groups out of the string. The ids should be separated by
+ * commas. Extra whitespace will be stripped and usernames or groupnames will
+ * be converted to uids or gids. If a username or groupname doesn't have a
+ * corresponding uid or gid, or if the uid or gid is not valid, it will be
+ * skipped.
  */
-void _parse_uids(char* string, ClassProperties* props) {
-    unsigned int comma_count = 0;
-    for (int i = 0; string[i] != '\0'; i++) if (string[i] == ',') comma_count++;
-
-    int* nusers = &props->nusers;
-    uid_t* users = props->users;
-    uid_t* new_list = realloc(users, sizeof(*new_list) * (*nusers + comma_count + 1));
-    if (new_list == NULL) malloc_error_exit();
-    props->users = users = new_list;
-    uid_t* new_uids_list = users + *nusers;
-
+void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid) {
+    id_t id;
     char* token;
-    unsigned int uid_count = 0;
+
     while ((token = strsep(&string, ","))) {
         trim_whitespace(&token);
-        if (to_uid(token, new_uids_list) == -1) {
-            continue;
+        if (uid_or_gid) {
+            if (to_uid(token, &id) == -1) {
+                continue;
+            }
+            append_vector_item(&props->users, (uid_t*) &id);
         }
-        uid_count++;
-        new_uids_list++;
-    }
-    props->nusers = *nusers + uid_count;
-    if (uid_count != comma_count) {
-        // Resize since not all usernames were valid
-        props->users = realloc(new_list, sizeof(*new_list) * props->nusers);
-        if (props->users == NULL) malloc_error_exit();
-    }
-}
-
-/*
- * Parses gids or groupnames out of the string, separated by commas, stripping
- * extra whitespace and transforming groupnames to gids. The gids are then put
- * in a malloced list. If the list is not NULL, the contents of the list are
- * copied into a new list. If a groupname doesn't have a corresponding gid, or
- * if the gid is not valid, it is skipped.
- */
-void _parse_gids(char* string, ClassProperties* props) {
-    unsigned int comma_count = 0;
-    for (int i = 0; string[i] != '\0'; i++) if (string[i] == ',') comma_count++;
-
-    int* ngroups = &props->ngroups;
-    gid_t* groups = props->groups;
-    gid_t* new_list = realloc(groups, sizeof(*new_list) * (*ngroups + comma_count));
-    if (new_list == NULL) malloc_error_exit();
-    props->groups = groups = new_list;
-    gid_t* new_gids_list = groups + *ngroups;
-
-    char* token;
-    unsigned int gid_count = 0;
-    while ((token = strsep(&string, ","))) {
-        trim_whitespace(&token);
-        if (to_gid(token, new_gids_list) == -1) continue;
-        gid_count++;
-        new_gids_list++;
-    }
-    props->ngroups = *ngroups + gid_count;
-    if (gid_count != comma_count) {
-        // Resize since not all groupnames were valid
-        props->groups = realloc(new_list, sizeof(*new_list) * (props->ngroups));
-        if (props->groups == NULL) malloc_error_exit();
+        else {
+            if (to_gid(token, &id) == -1) {
+                continue;
+            }
+            append_vector_item(&props->groups, (gid_t*) &id);
+        }
     }
 }
 
@@ -279,8 +252,9 @@ int _is_classfile(const struct dirent* dir) {
 }
 
 
-int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
+int evaluate(uid_t uid, Vector *props_list, ClassProperties* props) {
     assert(props_list);
+    assert(props);
 
     errno = 0;
     struct passwd* pw = getpwuid(uid);
@@ -294,16 +268,22 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
         return -1;
 
     double highest_priority = -INFINITY;
-    int props_match_count = 0;
-    for (int i = 0; i < nprops; i++) {
+    int props_match_count = 0, choosen_index = -1;
+    size_t nprops = get_vector_count(props_list);
+    ClassProperties *tmp_props;
+
+    for (size_t n = 0; n < nprops; n++) {
+        tmp_props = get_vector_item(props_list, n);
+
         // Select first if same priority
-        if (props_list[i].priority > highest_priority &&
-                _in_class(uid, groups, ngroups, &props_list[i])) {
-            highest_priority = props_list[i].priority;
-            *index = i;
+        if (tmp_props->priority > highest_priority &&
+                _in_class(uid, groups, ngroups, tmp_props)) {
+            highest_priority = tmp_props->priority;
+            choosen_index = (int) n;
             props_match_count++;
         }
     }
+    if (choosen_index != -1) *props = *((ClassProperties *) get_vector_item(props_list, (size_t) choosen_index));
     return props_match_count;
 }
 
@@ -312,12 +292,35 @@ int evaluate(uid_t uid, ClassProperties* props_list, int nprops, int* index) {
  */
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props) {
     assert(props);
-    for (int i = 0; i < props->nusers; i++)
-        if (props->users[i] == uid) return true;
 
-    for (int j = 0; j < ngroups; j++)
-        for (int k = 0; k < props->ngroups; k++)
-            if (props->groups[k] == groups[j]) return true;
+    if (find_vector_item(&props->users, _uid_finder, uid)) return true;
+    if (find_vector_item(&props->groups, _gids_finder, groups, ngroups)) return true;
     return false;
 }
 
+/*
+ * Implements the vector finder interface for finding a uid, given as the
+ * second argument, in a vector of uids.
+ */
+bool _uid_finder(void *void_uid, va_list args) {
+    assert(void_uid);
+
+    uid_t *uid = void_uid;
+    uid_t our_uid = va_arg(args, uid_t);
+    return our_uid == *uid;
+}
+
+/*
+ * Implements the vector finder interface for finding whether any of a list of
+ * gids, given as the second argument and the length as the third argument,
+ * are in a vector of gids.
+ */
+bool _gids_finder(void *void_gid, va_list args) {
+    assert(void_gid);
+
+    gid_t gid = *((gid_t *) void_gid);
+    gid_t *our_gids = va_arg(args, gid_t *);
+    int our_gid_count = va_arg(args, int);
+    for (int i = 0; i < our_gid_count; i++) if (our_gids[i] == gid) return true;
+    return false;
+}
