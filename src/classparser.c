@@ -21,9 +21,6 @@
 #include "classparser.h"
 #include "macros.h"
 
-const char* default_loc = "/etc/userctl";
-const char* default_ext = ".class";
-
 int _parse_line(char* line, char** restrict key, char** restrict value);
 int _insert_class_prop(ClassProperties* prop, char* restrict key, char* restrict value);
 void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid);
@@ -48,7 +45,7 @@ void create_control(ResourceControl* control, char *key, char *value) {
 void destroy_class(ClassProperties* props) {
     size_t ncontrols;
 
-    free(props->filepath);
+    free((char *) props->filepath);
     destroy_vector(&props->users);
     destroy_vector(&props->groups);
 
@@ -58,15 +55,15 @@ void destroy_class(ClassProperties* props) {
     destroy_vector(&props->controls);
 }
 
-int create_class(char *dir, char *filename, ClassProperties *props) {
+int create_class(const char *dir, const char *filename, ClassProperties *props) {
     assert(dir);
     assert(filename);
     assert(props);
 
-    char* filepath = get_filepath(dir, filename);
+    const char* filepath = get_filepath(dir, filename);
     int r = parse_classfile(filepath, props);
 
-    free(filepath);
+    free((char *) filepath);
     return r;
 }
 
@@ -227,9 +224,9 @@ void _print_line_error(unsigned long long linenum, const char* restrict filepath
     fprintf(stderr, "%llu:%s %s\n", linenum, filepath, desc);
 }
 
-static char* curr_ext = "";
+static const char* curr_ext = "";
 
-int list_class_files(char* dir, char* ext, struct dirent*** class_files, int* num_files) {
+int list_class_files(const char* dir, const char* ext, struct dirent*** class_files, int* num_files) {
     assert(num_files);
 
     curr_ext = ext;
@@ -308,7 +305,7 @@ bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props) {
  * Implements the vector finder interface for finding a uid, given as the
  * second argument, in a vector of uids.
  */
-bool _uid_finder(void *void_uid, va_list args) {
+inline bool _uid_finder(void *void_uid, va_list args) {
     assert(void_uid);
 
     uid_t *uid = void_uid;
@@ -321,7 +318,7 @@ bool _uid_finder(void *void_uid, va_list args) {
  * gids, given as the second argument and the length as the third argument,
  * are in a vector of gids.
  */
-bool _gids_finder(void *void_gid, va_list args) {
+inline bool _gids_finder(void *void_gid, va_list args) {
     assert(void_gid);
 
     gid_t gid = *((gid_t *) void_gid);

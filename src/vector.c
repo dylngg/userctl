@@ -35,7 +35,7 @@ int ensure_vector_capacity(Vector *vec, size_t capacity) {
     return 0;
 }
 
-int append_vector_item(Vector *vec, void *item) {
+int append_vector_item(Vector *vec, const void *item) {
     assert(vec);
     assert(item);
 

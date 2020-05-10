@@ -27,7 +27,7 @@ void create_control(ResourceControl* control, char *key, char *value);
 
 /* The properties of a class */
 typedef struct {
-    char* filepath;
+    const char* filepath;
     bool shared;
     double priority;
     Vector groups;
@@ -45,11 +45,7 @@ void destroy_class(ClassProperties* props);
  * If there was an issue parsing the class file, returns a -1. In that case,
  * the result of props is undefined. Otherwise, a zero is returned.
  */
-int create_class(char *dir, char *filename, ClassProperties *props);
-
-/* The default location of classes */
-extern const char* default_loc;
-extern const char* default_ext;
+int create_class(const char *dir, const char *filename, ClassProperties *props);
 
 /*
  * Parses a class file and passes a ClassProperties struct into props. If
@@ -74,7 +70,7 @@ int write_classfile(const char* filename, ClassProperties* props);
  * Note: dirent's d_type may be a DT_UNKNOWN. Do appropriate checks before
  * reading from it.
  */
-int list_class_files(char* dir, char* ext, struct dirent*** class_files, int* num_files);
+int list_class_files(const char* dir, const char* ext, struct dirent*** class_files, int* num_files);
 
 /*
  * Evaluates a user for what class they belong to. If there are multiple

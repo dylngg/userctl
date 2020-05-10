@@ -95,12 +95,19 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
     for (size_t n = 0; n < nprops; n++) {
         ClassProperties *props = get_vector_item(&context->props_list, n);
-        classnames[n] = props->filepath;
+        classnames[n] = strdup(props->filepath);
+        if (!classnames[n]) {
+            for (size_t m = 0; m < n; m++) free(classnames[m]);
+            goto cleanup_classnames;
+        }
     }
 
     r = sd_bus_message_append_strv(reply, classnames);
-    if (r < 0) goto cleanup_classnames;
+    if (r < 0) goto cleanup_inner_classnames;
     r = sd_bus_send(NULL, reply, NULL);
+
+cleanup_inner_classnames:
+    for (size_t m = 0; m < nprops; m++) free(classnames[m]);
 
 cleanup_classnames:
     free(classnames);
@@ -132,7 +139,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     pthread_rwlock_rdlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
-    if (!has_ext(classname, (char*) context->classext)) {
+    if (!has_ext(classname, context->classext)) {
         size_t new_size = strlen(classname) + strlen(context->classext) + 1;
         classname = realloc(classname, new_size);
         if (!classname) {
@@ -142,7 +149,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
         strcat(classname, context->classext);
     }
 
-    char *classpath = get_filepath(context->classdir, classname);
+    const char *classpath = get_filepath(context->classdir, classname);
     ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
@@ -179,7 +186,7 @@ unlock_cleanup_users:
     free(users);
 
 unlock_cleanup_classpath:
-    free(classpath);
+    free((char *) classpath);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -212,7 +219,7 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     pthread_rwlock_wrlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
-    if (!has_ext(classname, (char*) context->classext)) {
+    if (!has_ext(classname, context->classext)) {
         size_t new_size = strlen(classname) + strlen(context->classext) + 1;
         classname = realloc(classname, new_size);
         if (!classname) {
@@ -222,7 +229,7 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         strcat(classname, context->classext);
     }
 
-    char *classpath = get_filepath(context->classdir, classname);
+    const char *classpath = get_filepath(context->classdir, classname);
     ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
@@ -250,7 +257,7 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup_classpath:
-    free(classpath);
+    free((char *) classpath);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -270,7 +277,7 @@ inline bool _classname_finder(void *void_prop, va_list args) {
     assert(void_prop);
 
     ClassProperties *props = void_prop;
-    char *classpath = va_arg(args, char *);
+    const char *classpath = va_arg(args, char *);
     return strcmp(props->filepath, classpath) == 0;
 }
 

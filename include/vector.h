@@ -35,7 +35,7 @@ int ensure_vector_capacity(Vector *vec, size_t capacity);
  * Appends a item to the vector. Returns -1 if there was an error (and errno
  * should be looked up), otherwise 0.
  */
-int append_vector_item(Vector *vec, void *item);
+int append_vector_item(Vector *vec, const void *item);
 
 /*
  * Gets an item out of the given Vector.

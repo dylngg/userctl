@@ -22,19 +22,19 @@
 #define STATUS_INDENT 10
 
 typedef struct Class {
-    char* filepath;
+    const char* filepath;
     bool shared;
     double priority;
-    uid_t* uids;
-    int nuids;
-    uid_t* gids;
-    int ngids;
+    const uid_t* uids;
+    size_t uids_size;
+    const gid_t* gids;
+    size_t gids_size;
 } Class;
 
-void _print_class(char* filepath);
+void _print_class(const char* filepath);
 void _print_class_status(Class* class, bool print_uids, bool print_gids);
-void _print_status_user_line(uid_t* users, int nusers, bool print_uids);
-void _print_status_group_line(uid_t* groups, int ngroups, bool print_gids);
+void _print_status_user_line(const uid_t* users, int nusers, bool print_uids);
+void _print_status_group_line(const gid_t* groups, int ngroups, bool print_gids);
 
 
 static const char* service_path = "/org/dylangardner/userctl";
@@ -51,7 +51,7 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[]) {
         exit(1);
     }
 
-    char* given_cmd = argv[1];
+    const char* given_cmd = argv[1];
     int index = 0;
     while(cmds[index].dispatch) {  // If at end of list
         if (strcmp(given_cmd, cmds[index].cmd) == 0) {
@@ -148,7 +148,7 @@ cleanup:
 /*
  * Prints out the class.
  */
-void _print_class(char* filepath) {
+void _print_class(const char* filepath) {
     // We're using GNU basename, which doesn't destroy the arg (string.h)
     printf("%s (%s)\n", basename(filepath), filepath);
 }
@@ -168,7 +168,7 @@ void eval(int argc, char* argv[]) {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    char* filepath;
+    const char* filepath;
     int c, r;
     uid_t uid;
 
@@ -201,7 +201,7 @@ void eval(int argc, char* argv[]) {
         exit(0);
     }
     else if (optind < argc) {
-        char* user = argv[optind];
+        const char* user = argv[optind];
         if (to_uid(user, &uid) == -1) {
             if (errno != 0) errno_die("");
             else die("No such user\n");
@@ -263,10 +263,9 @@ void status(int argc, char* argv[]) {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    char* classname = NULL;
+    const char* classname;
     Class class = {0};
     static int c, r, print_gids, print_uids;
-    size_t uids_size, gids_size;
 
     while(true) {
         static struct option long_options[] = {
@@ -341,21 +340,19 @@ void status(int argc, char* argv[]) {
         goto cleanup;
     }
 
-    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.uids, &uids_size);
+    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.uids, &class.uids_size);
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse uids in class status from userctl %s\n",
                 strerror(-r));
         goto cleanup;
     }
-    class.nuids =  uids_size / sizeof(*class.uids);
 
-    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.gids, &gids_size);
+    r = sd_bus_message_read_array(msg, 'u', (const void**) &class.gids, &class.gids_size);
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse gids in class status from userctl %s\n",
                 strerror(-r));
         goto cleanup;
     }
-    class.ngids =  gids_size / sizeof(*class.gids);
     _print_class_status(&class, print_uids, print_gids);
 
 cleanup:
@@ -369,10 +366,10 @@ cleanup:
  */
 void _print_class_status(Class* class, bool print_uids, bool print_gids) {
     _print_class(class->filepath);
-    _print_status_user_line(class->uids, class->nuids, print_uids);
-    _print_status_group_line(class->gids, class->ngids, print_gids);
+    _print_status_user_line(class->uids, class->uids_size / sizeof *class->uids, print_uids);
+    _print_status_group_line(class->gids, class->gids_size / sizeof *class->gids, print_gids);
 
-    char* shared_str = (class->shared) ? "true": "false";
+    const char* shared_str = (class->shared) ? "true": "false";
     printf("%*s: %s\n", STATUS_INDENT, "Shared", shared_str);
     printf("%*s: %lf\n", STATUS_INDENT, "Priority", class->priority);
 }
@@ -382,11 +379,11 @@ void _print_class_status(Class* class, bool print_uids, bool print_gids) {
  * Prints the given users onto a line. If print_uids is true, the uids are not
  * converted to usernames. If a user isn't valid, they are ignored.
  */
-void _print_status_user_line(uid_t* users, int nusers, bool print_uids) {
+void _print_status_user_line(const uid_t* users, int nusers, bool print_uids) {
     assert(users);
 
     printf("%*s: ", STATUS_INDENT, "Users");
-    char* username;
+    const char* username;
     uid_t uid;
 
     for (int i = 0; i < nusers; i++) {
@@ -412,11 +409,11 @@ void _print_status_user_line(uid_t* users, int nusers, bool print_uids) {
  * Prints the given groups onto a line. If print_gids is true, the gids are
  * not converted to groupnames. If a group isn't valid, they are ignored.
  */
-void _print_status_group_line(uid_t* groups, int ngroups, bool print_gids) {
+void _print_status_group_line(const uid_t* groups, int ngroups, bool print_gids) {
     assert(groups);
 
     printf("%*s: ", STATUS_INDENT, "Groups");
-    char* groupname;
+    const char* groupname;
     gid_t gid;
 
     for (int i = 0; i < ngroups; i++) {
@@ -457,7 +454,7 @@ void reload(int argc, char* argv[]) {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    char* classname = NULL;
+    const char* classname;
     int c, r;
 
     while(true) {
