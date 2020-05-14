@@ -21,7 +21,6 @@
 #include "classparser.h"
 #include "macros.h"
 
-int _parse_line(char* line, char** restrict key, char** restrict value);
 int _insert_class_prop(ClassProperties* prop, char* restrict key, char* restrict value);
 void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid);
 void _print_line_error(unsigned long long linenum, const char* restrict filepath,
@@ -36,7 +35,7 @@ void destroy_control(ResourceControl* control) {
     free(control->value);
 }
 
-void create_control(ResourceControl* control, char *key, char *value) {
+void create_control(ResourceControl* control, const char *key, const char *value) {
     control->key = strdup(key);
     control->value = strdup(value);
     if (!control->key || !control->value) malloc_error_exit();
@@ -100,7 +99,7 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
                 _print_line_error(linenum, filepath, "No key=value found. Ignoring.");
                 continue;
             }
-            if (_parse_line(end, &key, &value) == -1) {
+            if (parse_key_value(end, &key, &value) == -1) {
                 _print_line_error(linenum, filepath, "Failed to parse key=value");
                 errors = true;
                 continue;
@@ -132,7 +131,7 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
  * Parses the given line into a key value pair. If there is a issue with
  * parsing, returns -1, sets key and value to NULL.
  */
-int _parse_line(char* line, char** restrict key, char** restrict value) {
+int parse_key_value(char* line, char** restrict key, char** restrict value) {
     *value = NULL;
     *key = strsep(&line, "=");
     *value = line;
@@ -256,17 +255,13 @@ int _is_classfile(const struct dirent* dir) {
 int evaluate(uid_t uid, Vector *props_list, ClassProperties* props) {
     assert(props_list);
     assert(props);
+    gid_t *groups;
+    int ngroups;
 
-    errno = 0;
-    struct passwd* pw = getpwuid(uid);
-    if (!pw) return -1;
-
-    int ngroups = (int) sysconf(_SC_NGROUPS_MAX);
-    if (ngroups <= 0) ngroups = 65536;  // Good enough
-    gid_t* groups = malloc(sizeof *groups * ngroups);
-    if (groups == NULL) malloc_error_exit();
-    if (getgrouplist(pw->pw_name, pw->pw_gid, groups, &ngroups) < 0)
+    if (get_groups(uid, &groups, &ngroups) < 0) {
+        puts("Failed to get group list");
         return -1;
+    }
 
     double highest_priority = -INFINITY;
     int props_match_count = 0, choosen_index = -1;

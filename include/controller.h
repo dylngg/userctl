@@ -50,6 +50,11 @@ int method_reload_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
 int method_daemon_reload(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
 
 /*
+ * Sets a transient resource control on a class.
+ */
+int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+
+/*
  * Enforces a class on the new user.
  */
 int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *error);

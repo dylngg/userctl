@@ -66,5 +66,15 @@ void daemon_reload(int argc, char* argv[]);
  */
 void show_daemon_reload_help();
 
+/*
+ * Sets a transient resource control on a class.
+ */
+void set_property(int argc, char* argv[]);
+
+/*
+ * Prints out the help for the set-property command.
+ */
+void show_set_property_help();
+
 
 #endif // COMMANDS_H

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include "utils.h"
 
@@ -74,6 +75,29 @@ bool _alldigits(const char* string) {
     const char* start = string;
     while (*string) if (isdigit(*string++) == 0) return false;
     return start != string;
+}
+
+int get_groups(uid_t uid, gid_t **gids, int *ngids) {
+    errno = 0;
+    gid_t *groups = NULL;
+    int ngroups = 0;
+
+    struct passwd* pw = getpwuid(uid);
+    if (!pw) return -1;
+
+    ngroups = (int) sysconf(_SC_NGROUPS_MAX);
+    if (ngroups <= 0) ngroups = 65536;  // Good enough
+
+    groups = malloc(sizeof *groups * ngroups);
+    if (!groups) malloc_error_exit();
+
+    if (getgrouplist(pw->pw_name, pw->pw_gid, groups, &ngroups) < 0) return -1;
+    groups = realloc(groups, sizeof *groups * ngroups);
+    if (!groups) return -1;
+
+    *gids = groups;
+    *ngids = ngroups;
+    return 0;
 }
 
 void trim_whitespace(char** string) {

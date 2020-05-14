@@ -48,6 +48,12 @@ int to_gid(const char* groupname, gid_t* gid);
 int to_groupname(gid_t gid, const char** groupname);
 
 /*
+ * Returns a list of gids belonging to the user. If there was an issue getting
+ * groups, -1 is returned. Otherwise, 0 is returned.
+ */
+int get_groups(uid_t uid, gid_t **gids, int *ngids);
+
+/*
  * Moves the string pointer to after the leading whitespace and adds a NULL
  * terminator at the beginning of the trailing whitespace. Special care should
  * be taken to _not_ free the pointer returned (the pointer may have changed).

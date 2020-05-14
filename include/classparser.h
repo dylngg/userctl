@@ -23,7 +23,7 @@ void destroy_control(ResourceControl* control);
 /*
  * Creates a ResourceControl struct for the given key and value.
  */
-void create_control(ResourceControl* control, char *key, char *value);
+void create_control(ResourceControl* control, const char *key, const char *value);
 
 /* The properties of a class */
 typedef struct {
@@ -54,6 +54,12 @@ int create_class(const char *dir, const char *filename, ClassProperties *props);
  * returned.
  */
 int parse_classfile(const char* filename, ClassProperties* props);
+
+/*
+ * Parses the given line into a key value pair. If there is a issue with
+ * parsing, returns -1, sets key and value to NULL.
+ */
+int parse_key_value(char* line, char** restrict key, char** restrict value);
 
 /*
  * Writes a class to the file. If there is an issue writing the class file,
