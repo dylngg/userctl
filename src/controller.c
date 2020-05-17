@@ -21,6 +21,7 @@
 static int _load_props_list(char* dir, char* ext, Vector* props_list);
 static bool _classname_finder(void *void_prop, va_list args);
 static int _enforce_controls(uid_t uid, Vector *controls);
+static int _enforce_controls_on_class(const char *classpath, Vector *props_list);
 static int _active_uids_and_class(Vector *uids, Vector *classes, Vector *props_list);
 
 int init_context(Context* context) {
@@ -263,6 +264,7 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     else {
         destroy_class(&backup);
     }
+    _enforce_controls_on_class(classpath, &context->props_list);
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup_classpath:
@@ -293,10 +295,6 @@ inline bool _classname_finder(void *void_prop, va_list args) {
 int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    Vector active_uids, corresponding_classes;
-    ClassProperties *props;
-    uid_t uid;
-    size_t nuids;
     int r;
 
     r = sd_bus_message_new_method_return(m, &reply);
@@ -318,17 +316,7 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
         destroy_context(&backup);
     }
 
-    create_vector(&active_uids, sizeof (uid_t));
-    create_vector(&corresponding_classes, sizeof (ClassProperties));
-    _active_uids_and_class(&active_uids, &corresponding_classes, &context->props_list);
-
-    nuids = get_vector_count(&active_uids);
-    for (size_t n = 0; n < nuids; n++) {
-        uid = *((uid_t *) get_vector_item(&active_uids, n));
-        props = get_vector_item(&corresponding_classes, n);
-        _enforce_controls(uid, &props->controls);
-    }
-
+    _enforce_controls_on_class(NULL, &context->props_list);
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup:
@@ -376,12 +364,10 @@ cleanup:
 
 int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     Context *context = userdata;
+    ResourceControl control;
+    ClassProperties *props;
     char *given_classname, *classname;
     const char *key, *value;
-    ClassProperties *props, *tmp_props;
-    Vector active_uids, corresponding_classes;
-    uid_t uid;
-    size_t nuids;
     bool is_alloc_classname;
     int r;
     sd_bus_message* reply = NULL;
@@ -412,23 +398,11 @@ int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
     }
 
     // FIXME: Constantly appending isn't the greatest idea...
-    ResourceControl control;
     create_control(&control, key, value);
     append_vector_item(&props->controls, &control);
 
     printf("Enforcing resource controls on all users in %s\n", classname);
-
-    create_vector(&active_uids, sizeof (uid_t));
-    create_vector(&corresponding_classes, sizeof (ClassProperties));
-    _active_uids_and_class(&active_uids, &corresponding_classes, &context->props_list);
-
-    nuids = get_vector_count(&active_uids);
-    for (size_t n = 0; n < nuids; n++) {
-        uid = *((uid_t *) get_vector_item(&active_uids, n));
-        tmp_props = get_vector_item(&corresponding_classes, n);
-        if (strcmp(tmp_props->filepath, props->filepath) != 0) continue;
-        _enforce_controls(uid, &props->controls);
-    }
+    _enforce_controls_on_class(classpath, &context->props_list);
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup_classpath:
@@ -535,6 +509,41 @@ cleanup:
     return r;
 }
 
+/*
+ * Enforces the given resource controls on the active users of the given
+ * class. If the given class is NULL, every user's evaluated resource controls
+ * are enforced. If there was an error, -1 is returned (and errno should be
+ * looked up). Otherwise, 0 is returned.
+ */
+static int _enforce_controls_on_class(const char *filepath, Vector *props_list) {
+    Vector active_uids, corresponding_classes;
+    ClassProperties *evaluated_props;
+    uid_t uid;
+    size_t nuids;
+    int r = 0;
+
+    create_vector(&active_uids, sizeof (uid_t));
+    create_vector(&corresponding_classes, sizeof (ClassProperties));
+    r = _active_uids_and_class(&active_uids, &corresponding_classes, props_list);
+    if (r < 0) return -1;
+
+    nuids = get_vector_count(&active_uids);
+    for (size_t n = 0; n < nuids; n++) {
+        uid = *((uid_t *) get_vector_item(&active_uids, n));
+        evaluated_props = get_vector_item(&corresponding_classes, n);
+        if (filepath && strcmp(filepath, evaluated_props->filepath) != 0) continue;
+        _enforce_controls(uid, &evaluated_props->controls);
+    }
+    destroy_vector(&active_uids);
+    destroy_vector(&corresponding_classes);
+    return 0;
+}
+
+/*
+ * Enforces the given resource controls on a specific user. If there was an
+ * error, -1 is returned (and errno should be looked up). Otherwise, 0 is
+ * returned.
+ */
 static int _enforce_controls(uid_t uid, Vector *controls) {
     int r = 0;
     pid_t pid;
@@ -549,7 +558,7 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
     size_t argc_prefix = 3;                              // systemctl + set-property + unit_name
     size_t argc = argc_prefix + ncontrols;               // + controls ...
     char **argv = malloc(sizeof *argv * (argc + 1));  // + NULL
-    if (!argv) return -ENOMEM;
+    if (!argv) return -1;
 
     argv[0] = "systemctl";
     argv[1] = "set-property";
@@ -562,7 +571,7 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
         arglen = (strlen(control->key) + strlen(control->value) + 2);
         arg = malloc(sizeof *arg * arglen);
         if (!arg) {
-            r = -ENOMEM;
+            r = -1;
             for (size_t m = 0; m < n; m++) free(arg);
             goto cleanup;
         }
@@ -574,7 +583,7 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
     pid = fork();
     if (pid == -1) {
         perror("Failed to fork and set property");
-        r = -errno;
+        r = -1;
         goto exec_cleanup;
     }
     if (pid == 0) {
