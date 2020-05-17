@@ -21,7 +21,7 @@
 static int _load_props_list(char* dir, char* ext, Vector* props_list);
 static bool _classname_finder(void *void_prop, va_list args);
 static int _enforce_controls(uid_t uid, Vector *controls);
-static int _active_uids_of_class(Vector *uids, ClassProperties *props, Vector *procs_list);
+static int _active_uids_and_class(Vector *uids, Vector *classes, Vector *props_list);
 
 int init_context(Context* context) {
     context->classdir = strdup("/etc/userctl");
@@ -293,6 +293,10 @@ inline bool _classname_finder(void *void_prop, va_list args) {
 int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
+    Vector active_uids, corresponding_classes;
+    ClassProperties *props;
+    uid_t uid;
+    size_t nuids;
     int r;
 
     r = sd_bus_message_new_method_return(m, &reply);
@@ -313,6 +317,18 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
     else {
         destroy_context(&backup);
     }
+
+    create_vector(&active_uids, sizeof (uid_t));
+    create_vector(&corresponding_classes, sizeof (ClassProperties));
+    _active_uids_and_class(&active_uids, &corresponding_classes, &context->props_list);
+
+    nuids = get_vector_count(&active_uids);
+    for (size_t n = 0; n < nuids; n++) {
+        uid = *((uid_t *) get_vector_item(&active_uids, n));
+        props = get_vector_item(&corresponding_classes, n);
+        _enforce_controls(uid, &props->controls);
+    }
+
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup:
@@ -362,8 +378,9 @@ int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
     Context *context = userdata;
     char *given_classname, *classname;
     const char *key, *value;
-    Vector active_uids;
-    uid_t tmp_uid;
+    ClassProperties *props, *tmp_props;
+    Vector active_uids, corresponding_classes;
+    uid_t uid;
     size_t nuids;
     bool is_alloc_classname;
     int r;
@@ -386,7 +403,7 @@ int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
     is_alloc_classname = (r == 1);
 
     const char *classpath = get_filepath(context->classdir, classname);
-    ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
+    props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
                                "No such class found (may need to daemon-reload).");
@@ -402,12 +419,15 @@ int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
     printf("Enforcing resource controls on all users in %s\n", classname);
 
     create_vector(&active_uids, sizeof (uid_t));
-    _active_uids_of_class(&active_uids, props, &context->props_list);
+    create_vector(&corresponding_classes, sizeof (ClassProperties));
+    _active_uids_and_class(&active_uids, &corresponding_classes, &context->props_list);
 
     nuids = get_vector_count(&active_uids);
     for (size_t n = 0; n < nuids; n++) {
-        tmp_uid = *((uid_t *) get_vector_item(&active_uids, n));
-        _enforce_controls(tmp_uid, &props->controls);
+        uid = *((uid_t *) get_vector_item(&active_uids, n));
+        tmp_props = get_vector_item(&corresponding_classes, n);
+        if (strcmp(tmp_props->filepath, props->filepath) != 0) continue;
+        _enforce_controls(uid, &props->controls);
     }
     r = sd_bus_send(NULL, reply, NULL);
 
@@ -425,16 +445,17 @@ cleanup:
 }
 
 /*
- * Fills the given vector with uids. If there was an error, -1 is returned
- * (and errno should be looked up). Otherwise, 0 is returned.
+ * Fills the given vector with uids and a vector of to their corresponding
+ * class. If there was an error, -1 is returned (and errno should be looked
+ * up). Otherwise, 0 is returned.
  */
-static int _active_uids_of_class(Vector *uids, ClassProperties *props, Vector *props_list) {
+static int _active_uids_and_class(Vector *uids, Vector *classes, Vector *props_list) {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const uid_t tmp_uid;
+    const uid_t uid;
     int r;
-    ClassProperties tmp_props;
+    ClassProperties props;
 
     /* Connect to the system bus */
     r = sd_bus_open_system(&bus);
@@ -465,11 +486,10 @@ static int _active_uids_of_class(Vector *uids, ClassProperties *props, Vector *p
         goto cleanup;
     }
 
-    while ((r = sd_bus_message_read(msg, "(uso)", &tmp_uid, NULL, NULL)) > 0) {
-        if (evaluate(tmp_uid, props_list, &tmp_props) < 1) continue;
-        if (strcmp(props->filepath, tmp_props.filepath) != 0) continue;
-
-        append_vector_item(uids, &tmp_uid);
+    while ((r = sd_bus_message_read(msg, "(uso)", &uid, NULL, NULL)) > 0) {
+        if (evaluate(uid, props_list, &props) < 1) continue;
+        append_vector_item(uids, &uid);
+        append_vector_item(classes, &props);
     }
     if (r < 0) {
         fprintf(stderr, "Failed to parse active uids: %s\n", strerror(-r));
