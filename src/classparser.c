@@ -255,33 +255,29 @@ int _is_classfile(const struct dirent* dir) {
 int evaluate(uid_t uid, Vector *props_list, ClassProperties* props) {
     assert(props_list);
     assert(props);
+    ClassProperties *tmp_props, *choosen_class = NULL;
     gid_t *groups;
-    int ngroups;
+    int ngroups = 0, props_match_count = 0;
+    double highest_priority = -INFINITY;
 
     if (get_groups(uid, &groups, &ngroups) < 0) {
         puts("Failed to get group list");
         return -1;
     }
 
-    double highest_priority = -INFINITY;
-    int props_match_count = 0, choosen_index = -1;
-    size_t nprops = get_vector_count(props_list);
-    ClassProperties *tmp_props;
-
-    for (size_t n = 0; n < nprops; n++) {
-        tmp_props = get_vector_item(props_list, n);
-
+    while ((tmp_props = iter_vector(props_list))) {
         // Select first if same priority
         if (tmp_props->priority > highest_priority &&
                 _in_class(uid, groups, ngroups, tmp_props)) {
             highest_priority = tmp_props->priority;
-            choosen_index = (int) n;
+            choosen_class = tmp_props;
             props_match_count++;
         }
     }
+    iter_vector_end(props_list);
     free(groups);
 
-    if (choosen_index != -1) *props = *((ClassProperties *) get_vector_item(props_list, (size_t) choosen_index));
+    if (choosen_class) *props = *choosen_class;
     return props_match_count;
 }
 

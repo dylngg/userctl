@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,6 +10,7 @@ int create_vector(Vector *vec, size_t item_size) {
 
     vec->capacity = 16;
     vec->count = 0;
+    vec->iter_count = 0;
     vec->item_size = item_size;
 
     vec->data = malloc(item_size * vec->capacity);
@@ -61,22 +61,38 @@ size_t get_vector_count(Vector *vec) {
 
 void *find_vector_item(Vector *vec, finder_t finder, ...) {
     assert(vec);
-    size_t count = get_vector_count(vec);
     void *item = NULL, *tmp_item = NULL;
     va_list args;
 
     va_start(args, finder);
 
-    for (size_t i = 0; i < count; i++) {
-        tmp_item = get_vector_item(vec, i);
+    while ((tmp_item = iter_vector(vec))) {
         if (finder(tmp_item, args)) {
             item = tmp_item;
             break;
         }
     }
+    iter_vector_end(vec);
 
     va_end(args);
     return item;
+}
+
+void *iter_vector(Vector *vec) {
+    assert(vec);
+
+    if (vec->iter_count >= vec->count) {
+        iter_vector_end(vec);
+        return NULL;
+    }
+    void *item = vec->data + vec->iter_count * vec->item_size;
+    vec->iter_count++;
+    return item;
+}
+
+void iter_vector_end(Vector *vec) {
+    assert(vec);
+    vec->iter_count = 0;
 }
 
 int convert_vector_to_array(Vector *vec, void **array, size_t *size) {

@@ -2,13 +2,18 @@
 #ifndef VECTOR_H
 #define VECTOR_H
 
+#include <stdarg.h>
 #include <stdbool.h>
 
+/*
+ * Defines a non-nullable vector.
+ */
 typedef struct Vector {
     char *data;
     size_t capacity;
     size_t count;
     size_t item_size;
+    size_t iter_count;
 } Vector;
 
 typedef bool (*finder_t)(void *, va_list);
@@ -52,6 +57,17 @@ size_t get_vector_count(Vector *vec);
  * NULL is returned.
  */
 void *find_vector_item(Vector *vec, finder_t finder, ...);
+
+/*
+ * Iterates over the vector, returning each item within it. NULL is returned
+ * for the last item.
+ */
+void *iter_vector(Vector *vec);
+
+/*
+ * Resets the vector iterator.
+ */
+void iter_vector_end(Vector *vec);
 
 /*
  * Creates a new single allocation array (ending in NULL) from the given

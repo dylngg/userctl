@@ -37,12 +37,9 @@ void destroy_context(Context* context) {
     assert(context);
 
     ClassProperties *props;
-    size_t nprops = get_vector_count(&context->props_list);
-
-    for (size_t n = 0; n < nprops; n++) {
-        props = get_vector_item(&context->props_list, n);
+    while ((props = iter_vector(&context->props_list)))
         destroy_class(props);
-    }
+
     destroy_vector(&context->props_list);
     free(context->classdir);
     free(context->classext);
