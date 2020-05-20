@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
+#define _GNU_SOURCE
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -17,10 +18,11 @@
 #include "controller.h"
 #include "utils.h"
 #include "vector.h"
+#include "hashmap.h"
 
 static int _load_props_list(char* dir, char* ext, Vector* props_list);
 static bool _classname_finder(void *void_prop, va_list args);
-static int _enforce_controls(uid_t uid, Vector *controls);
+static int _enforce_controls(uid_t uid, HashMap *controls);
 static int _enforce_controls_on_class(const char *classpath, Vector *props_list);
 static int _active_uids_and_class(Vector *uids, Vector *classes, Vector *props_list);
 
@@ -361,10 +363,9 @@ cleanup:
 
 int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     Context *context = userdata;
-    ResourceControl control;
     ClassProperties *props;
     char *given_classname, *classname;
-    const char *key, *value;
+    char *key, *value;
     bool is_alloc_classname;
     int r;
     sd_bus_message* reply = NULL;
@@ -394,9 +395,7 @@ int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
         goto unlock_cleanup_classpath;
     }
 
-    // FIXME: Constantly appending isn't the greatest idea...
-    create_control(&control, key, value);
-    append_vector_item(&props->controls, &control);
+    add_hashmap_entry(&props->controls, key, value);
 
     printf("Enforcing resource controls on all users in %s\n", classname);
     _enforce_controls_on_class(classpath, &context->props_list);
@@ -541,20 +540,23 @@ static int _enforce_controls_on_class(const char *filepath, Vector *props_list) 
  * error, -1 is returned (and errno should be looked up). Otherwise, 0 is
  * returned.
  */
-static int _enforce_controls(uid_t uid, Vector *controls) {
+static int _enforce_controls(uid_t uid, HashMap *controls) {
     int r = 0;
     pid_t pid;
     int status, arglen;
     char *arg;
+    char **argv;
+    const char *key, *value;
+    size_t ncontrols, argc_prefix, argc, n;
 
     printf("Enforcing resource controls on %d\n", uid);
 
-    size_t ncontrols = get_vector_count(controls);
+    ncontrols = get_hashmap_count(controls);
     if (ncontrols < 1) return 0;
 
-    size_t argc_prefix = 3;                              // systemctl + set-property + unit_name
-    size_t argc = argc_prefix + ncontrols;               // + controls ...
-    char **argv = malloc(sizeof *argv * (argc + 1));  // + NULL
+    argc_prefix = 3;                            // systemctl + set-property + unit_name
+    argc = argc_prefix + ncontrols;             // + controls ...
+    argv = malloc(sizeof *argv * (argc + 1));   // + NULL
     if (!argv) return -1;
 
     argv[0] = "systemctl";
@@ -563,18 +565,20 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
     snprintf(unit_name, 24, "user-%u.slice", uid);
     argv[2] = unit_name;
 
-    for (size_t n = 0; n < ncontrols; n++) {
-        ResourceControl *control = get_vector_item(controls, n);
-        arglen = (strlen(control->key) + strlen(control->value) + 2);
+    for (n = 0; n < ncontrols; n++) {
+        iter_hashmap(controls, &key, &value);
+        arglen = strlen(key) + strlen(value) + 2;
         arg = malloc(sizeof *arg * arglen);
         if (!arg) {
             r = -1;
-            for (size_t m = 0; m < n; m++) free(arg);
+            iter_hashmap_end(controls);
             goto cleanup;
         }
-        snprintf(arg, arglen, "%s=%s", control->key, control->value);
+
+        snprintf(arg, arglen, "%s=%s", key, value);
         argv[argc_prefix + n] = arg;
     }
+    iter_hashmap_end(controls);
     argv[argc] = NULL;
 
     pid = fork();
@@ -603,7 +607,7 @@ static int _enforce_controls(uid_t uid, Vector *controls) {
     }
 
 exec_cleanup:
-    for (size_t n = 0; n < ncontrols; n++) free(argv[argc_prefix + n]);
+    for (size_t m = 0; m < n; m++) free(argv[argc_prefix + m]);
 
 cleanup:
     free(argv);

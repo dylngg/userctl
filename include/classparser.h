@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 #ifndef CLASSPARSER_H
 #define CLASSPARSER_H
+#define _GNU_SOURCE
 
 #include <dirent.h>
 #include <stdbool.h>
@@ -8,22 +9,9 @@
 #include <pwd.h>
 
 #include "vector.h"
+#include "hashmap.h"
 
-/* A resource control (systemd) */
-typedef struct ResourceControl {
-    char* key;
-    char* value;
-} ResourceControl;
-
-/*
- * Destroys the ResourceControl struct by deallocating things.
- */
-void destroy_control(ResourceControl* control);
-
-/*
- * Creates a ResourceControl struct for the given key and value.
- */
-void create_control(ResourceControl* control, const char *key, const char *value);
+#define MAX_CONTROLS 512
 
 /* The properties of a class */
 typedef struct {
@@ -32,7 +20,7 @@ typedef struct {
     double priority;
     Vector groups;
     Vector users;
-    Vector controls;
+    HashMap controls;
 } ClassProperties;
 
 /*

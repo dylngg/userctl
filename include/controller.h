@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
+#define _GNU_SOURCE
 
 #include <systemd/sd-bus.h>
 

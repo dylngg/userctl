@@ -18,6 +18,7 @@
 
 #include "utils.h"
 #include "vector.h"
+#include "hashmap.h"
 #include "classparser.h"
 #include "macros.h"
 
@@ -30,28 +31,11 @@ bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
 bool _uid_finder(void *void_uid, va_list args);
 bool _gids_finder(void *void_gid, va_list args);
 
-void destroy_control(ResourceControl* control) {
-    free(control->key);
-    free(control->value);
-}
-
-void create_control(ResourceControl* control, const char *key, const char *value) {
-    control->key = strdup(key);
-    control->value = strdup(value);
-    if (!control->key || !control->value) malloc_error_exit();
-}
-
 void destroy_class(ClassProperties* props) {
-    size_t ncontrols;
-
     free((char *) props->filepath);
     destroy_vector(&props->users);
     destroy_vector(&props->groups);
-
-    ncontrols = get_vector_count(&props->controls);
-    for (size_t n = 0; n < ncontrols; n++)
-        destroy_control(get_vector_item(&props->controls, n));
-    destroy_vector(&props->controls);
+    destroy_hashmap(&props->controls);
 }
 
 int create_class(const char *dir, const char *filename, ClassProperties *props) {
@@ -74,7 +58,7 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
     if (!props->filepath) malloc_error_exit();
     if ((create_vector(&props->users, sizeof (uid_t))) < 0) return -1;
     if ((create_vector(&props->groups, sizeof (gid_t))) < 0) return -1;
-    if ((create_vector(&props->controls, sizeof (ResourceControl))) < 0) return -1;
+    if ((create_hashmap(&props->controls, MAX_CONTROLS)) < 0) return -1;
 
     FILE* classfile = fopen(filepath, "r");
     if (classfile) {
@@ -171,10 +155,7 @@ int _insert_class_prop(ClassProperties* props, char* restrict key, char* restric
         _parse_uids_or_gids(value, props, true);
     }
     else {
-        // Assume it's a resource control
-        ResourceControl control;
-        create_control(&control, key, value);
-        append_vector_item(&props->controls, &control);
+        add_hashmap_entry(&props->controls, key, value);
     }
     return 0;
 }

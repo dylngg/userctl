@@ -8,8 +8,8 @@ INCLUDE += -Iinclude
 SRCDIR = src
 OBJDIR = obj
 SRC = $(wildcard $(SRCDIR)/*.c)
-USERCTL_OBJ = $(OBJDIR)/userctl.o $(OBJDIR)/utils.o $(OBJDIR)/commands.o $(OBJDIR)/vector.o $(OBJDIR)/classparser.o
-USERCTLD_OBJ = $(OBJDIR)/userctld.o $(OBJDIR)/classparser.o $(OBJDIR)/utils.o $(OBJDIR)/controller.o $(OBJDIR)/vector.o
+USERCTL_OBJ = $(OBJDIR)/userctl.o $(OBJDIR)/utils.o $(OBJDIR)/commands.o $(OBJDIR)/vector.o $(OBJDIR)/classparser.o $(OBJDIR)/hashmap.o
+USERCTLD_OBJ = $(OBJDIR)/userctld.o $(OBJDIR)/classparser.o $(OBJDIR)/utils.o $(OBJDIR)/controller.o $(OBJDIR)/vector.o $(OBJDIR)/hashmap.o
 
 .PHONY: all clean
 
