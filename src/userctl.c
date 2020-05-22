@@ -10,6 +10,7 @@ int main(int argc, char* argv[]) {
 //        {"add-group", add_group}
 //        {"add-user", add_user},
 //        {"edit", edit},
+        {"cat", cat},
         {"eval", eval},
         {"-h", show_help},
         {"--help", show_help},

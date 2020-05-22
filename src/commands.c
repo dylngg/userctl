@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <grp.h>
 #include <limits.h>
@@ -689,6 +690,117 @@ void show_set_property_help() {
         "userctl set-property [OPTIONS...] [TARGET] [CONTROLS...]\n\n"
         "Sets a transient resource control on a class. For permanent "
         "controls you edit the class file.\n"
+        "  -h --help\t\tShow this help\n"
+    );
+}
+
+void cat(int argc, char* argv[]) {
+    assert(argc >= 0);  // No negative args
+    assert(argv);  // At least empty
+
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    const char* classname;
+    Class class = {0};
+    int c, r, fd;
+    size_t bufsize = 8096;
+    char buf[bufsize];
+
+    while(true) {
+        static struct option long_options[] = {
+            {"help", no_argument, &help, 'h'},
+            {0}
+        };
+
+        int option_index = 0;
+        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        if (c == -1) break;
+        switch(c) {
+            case 'h':
+                help = 1;
+                break;
+            case '?':
+                stop = 1;
+                break;
+            default:
+                continue;
+        }
+    }
+    // Abort, missing/wrong args (getopt will print errors out)
+    if (stop) exit(1);
+
+    if (help) {
+        show_cat_help();
+        exit(0);
+    }
+
+    if (optind >= argc)
+        die("No class given\n");
+
+    /* Connect to the system bus */
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto cleanup;
+    }
+
+    for (int i = optind; i < argc; i++) {
+        classname = argv[i];
+        r = sd_bus_call_method(
+            bus,
+            service_name,
+            service_path,
+            service_name,
+            "GetClass",
+            &error,
+            &msg,
+            "s",
+            classname
+        );
+        if (r < 0) {
+            fprintf(stderr, "%s\n", error.message);
+            continue;
+        }
+
+        r = sd_bus_message_read(
+            msg, "s",
+            &class.filepath
+        );
+        if (r < 0) {
+            fprintf(stderr, "Internal error: Failed to parse class from userctld %s\n",
+                    strerror(-r));
+            continue;
+        }
+
+        fd = open(class.filepath, O_RDONLY);
+        if (fd < 0) {
+            perror("Failed to open class file");
+            continue;
+        }
+
+        for (;;) {
+            r = read(fd, &buf, bufsize);
+            if (r < 0) {
+                perror("Failed to open class file");
+                break;
+            }
+            if (r == 0) break;
+
+            fputs(buf, stdout);
+        }
+        close(fd);
+    }
+
+cleanup:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
+}
+
+void show_cat_help() {
+    printf(
+        "userctl cat [OPTIONS...] [TARGET] \n\n"
+        "Prints out the class file.\n"
         "  -h --help\t\tShow this help\n"
     );
 }

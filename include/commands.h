@@ -77,4 +77,15 @@ void set_property(int argc, char* argv[]);
 void show_set_property_help();
 
 
+/*
+ * Prints out the class file.
+ */
+void cat(int argc, char* argv[]);
+
+/*
+ * Prints out the help for the cat command.
+ */
+void show_cat_help();
+
+
 #endif // COMMANDS_H
