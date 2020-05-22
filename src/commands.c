@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <systemd/sd-bus.h>
@@ -811,7 +812,8 @@ void edit(int argc, char* argv[]) {
     sd_bus* bus = NULL;
     const char* classname;
     char *filepath, *editor;
-    int c, r, status;
+    int c, r, status, modtime = 0;
+    struct stat classstat;
     pid_t pid;
     char *editor_argv[3];
 
@@ -893,6 +895,12 @@ void edit(int argc, char* argv[]) {
     die("Could not edit the given class. Set EDITOR or VISUAL.");
 
 exec:
+    if (stat(filepath, &classstat) < 0) {
+        fprintf(stderr, "Cannot stat %s.\n", filepath);
+        goto cleanup;
+    }
+    modtime = classstat.st_mtime;
+
     pid = fork();
     if (pid == -1) {
         perror("Failed to fork and edit class");
@@ -919,9 +927,10 @@ exec:
                 strsignal(WTERMSIG(status)));
     }
 
-    r = _reload_class(classname);
-    if (r < 0) {
-        puts("Failed to reload class");
+    if (stat(filepath, &classstat) < 0) goto cleanup;  // It may have been removed?
+    if (classstat.st_mtime > modtime) {
+        printf("Reloading %s\n", classname);
+        _reload_class(classname);
     }
 
 cleanup:
