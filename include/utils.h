@@ -71,9 +71,4 @@ bool has_ext(const char* restrict string, const char* restrict ext);
 const char* get_filepath(const char* restrict dir,
     const char* restrict filename);
 
-/*
- * Exits if there is a malloc issue.
- */
-void malloc_error_exit();
-
 #endif // UTILS_H

@@ -186,6 +186,11 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     is_alloc_classname = (r == 1);
 
     const char* classpath = get_filepath(context->classdir, classname);
+    if (!classpath) {
+        r = -errno;
+        goto unlock_cleanup_classname;
+    }
+
     ClassProperties* props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
@@ -224,6 +229,8 @@ unlock_cleanup_users:
 
 unlock_cleanup_classpath:
     free((char*)classpath);
+
+unlock_cleanup_classname:
     if (is_alloc_classname)
         free(classname);
 
@@ -263,6 +270,11 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     is_alloc_classname = (r == 1);
 
     const char* classpath = get_filepath(context->classdir, classname);
+    if (!classpath) {
+        r = -errno;
+        goto unlock_cleanup_classname;
+    }
+
     ClassProperties* props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
@@ -291,6 +303,8 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
 unlock_cleanup_classpath:
     free((char*)classpath);
+
+unlock_cleanup_classname:
     if (is_alloc_classname)
         free(classname);
 
@@ -422,6 +436,11 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     is_alloc_classname = (r == 1);
 
     const char* classpath = get_filepath(context->classdir, classname);
+    if (!classpath) {
+        r = -errno;
+        goto unlock_cleanup_classname;
+    }
+
     props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
@@ -438,6 +457,8 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
 unlock_cleanup_classpath:
     free((char*)classpath);
+
+unlock_cleanup_classname:
     if (is_alloc_classname)
         free(classname);
 

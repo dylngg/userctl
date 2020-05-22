@@ -61,7 +61,7 @@ int parse_classfile(const char* filepath, ClassProperties* props)
     memset(props, 0, sizeof *props);
     props->filepath = strdup(filepath);
     if (!props->filepath)
-        malloc_error_exit();
+        return -1;
     if ((create_vector(&props->users, sizeof(uid_t))) < 0)
         return -1;
     if ((create_vector(&props->groups, sizeof(gid_t))) < 0)

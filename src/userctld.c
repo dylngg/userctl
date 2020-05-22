@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
 
     Context* context = malloc(sizeof *context);
     if (!context)
-        malloc_error_exit();
+        errno_die("Failed to initialize userctld");
     if ((init_context(context)) < 0)
         errno_die("Failed to initialize userctld");
 

@@ -107,7 +107,7 @@ int get_groups(uid_t uid, gid_t** gids, int* ngids)
 
     groups = malloc(sizeof *groups * ngroups);
     if (!groups)
-        malloc_error_exit();
+        return -1;
 
     if (getgrouplist(pw->pw_name, pw->pw_gid, groups, &ngroups) < 0)
         return -1;
@@ -147,12 +147,8 @@ get_filepath(const char* restrict loc, const char* restrict filename)
 {
     char* filepath = malloc(strlen(loc) + strlen(filename) + 2);
     if (!filepath)
-        malloc_error_exit();
+        return NULL;
+
     sprintf(filepath, "%s/%s", loc, filename);
     return filepath;
-}
-
-void malloc_error_exit()
-{
-    errno_die("");
 }
