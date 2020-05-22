@@ -51,12 +51,6 @@ int parse_classfile(const char* filename, ClassProperties* props);
 int parse_key_value(char* line, char** restrict key, char** restrict value);
 
 /*
- * Writes a class to the file. If there is an issue writing the class file,
- * returns -1 and prints the error. Otherwise, a zero is returned.
- */
-int write_classfile(const char* filename, ClassProperties* props);
-
-/*
  * Returns a allocated list of allocated dirent class files in the default
  * class location and passes back the number of files. Returns a -1 if there
  * is an error, otherwise a zero is returned. If a -1 is returned, the issue

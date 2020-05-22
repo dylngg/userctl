@@ -201,14 +201,6 @@ void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid)
     }
 }
 
-int write_classfile(const char* filepath, ClassProperties* props)
-{
-    assert(filepath);
-    assert(props);
-    // TODO: Write the function
-    return 0;
-}
-
 /*
  * Reports on a error on a specific line in the given file.
  */
