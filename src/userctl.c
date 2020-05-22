@@ -7,8 +7,7 @@ void show_help();
 
 int main(int argc, char* argv[])
 {
-    static const Command cmds[] = { //        {"add-group", add_group}
-        //        {"add-user", add_user},
+    static const Command cmds[] = {
         { "edit", edit },
         { "cat", cat },
         { "eval", eval },

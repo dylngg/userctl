@@ -73,10 +73,10 @@ int parse_classfile(const char* filepath, ClassProperties* props)
     if (classfile) {
         unsigned int linenum = 0;
         bool errors = false;
-        char buf[LINE_BUFSIZE];
-        char* end;
-        char* key;
-        char* value;
+        char buf[LINE_BUFSIZE] = { 0 };
+        char* end = NULL;
+        char* key = NULL;
+        char* value = NULL;
 
         while ((end = fgets(buf, sizeof buf / sizeof *buf, classfile))) {
             if (linenum < UINT_MAX)
@@ -182,8 +182,8 @@ int _insert_class_prop(ClassProperties* props, char* restrict key,
  */
 void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid)
 {
-    id_t id;
-    char* token;
+    id_t id = 0;
+    char* token = "";
 
     while ((token = strsep(&string, ","))) {
         trim_whitespace(&token);
@@ -251,9 +251,11 @@ int evaluate(uid_t uid, Vector* props_list, ClassProperties* props)
 {
     assert(props_list);
     assert(props);
-    ClassProperties *tmp_props, *choosen_class = NULL;
-    gid_t* groups;
-    int ngroups = 0, props_match_count = 0;
+    ClassProperties* tmp_props = NULL;
+    ClassProperties* choosen_class = NULL;
+    gid_t* groups = NULL;
+    int ngroups = 0;
+    int props_match_count = 0;
     double highest_priority = -INFINITY;
 
     if (get_groups(uid, &groups, &ngroups) < 0) {

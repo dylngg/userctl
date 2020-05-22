@@ -34,9 +34,9 @@ static const char* service_name = "org.dylangardner.userctl";
 
 int main(int argc, char* argv[])
 {
-    pthread_t tid;
+    pthread_t tid = 0;
     sd_bus* bus = NULL;
-    int r;
+    int r = 0;
 
     Context* context = malloc(sizeof *context);
     if (!context)
@@ -109,7 +109,7 @@ class_enforcer(void* vargp)
 
     sd_bus* bus = NULL;
     sd_event* event = NULL;
-    int r;
+    int r = 0;
     Context* context = vargp;
 
     r = sd_bus_open_system(&bus);

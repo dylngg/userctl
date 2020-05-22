@@ -82,7 +82,8 @@ void list(int argc, char* argv[])
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
     char** classes = NULL;
-    int c, r;
+    int c = 0;
+    int r = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 1 },
@@ -169,9 +170,9 @@ void eval(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* filepath;
-    int c, r;
-    uid_t uid;
+    const char* filepath = "";
+    int c = 0, r = 0;
+    uid_t uid = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 1 },
@@ -256,9 +257,10 @@ void status(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname;
+    const char* classname = NULL;
     Class class = { 0 };
     static int c, r, print_gids, print_uids;
+    c = r = print_gids = print_uids = 0;
 
     while (true) {
         static struct option long_options[] = {
@@ -372,8 +374,8 @@ void _print_status_user_line(const uid_t* users, int nusers, bool print_uids)
     assert(users);
 
     printf("%*s: ", STATUS_INDENT, "Users");
-    const char* username;
-    uid_t uid;
+    const char* username = NULL;
+    uid_t uid = 0;
 
     for (int i = 0; i < nusers; i++) {
         uid = (uid_t)users[i];
@@ -405,8 +407,8 @@ void _print_status_group_line(const uid_t* groups, int ngroups, bool print_gids)
     assert(groups);
 
     printf("%*s: ", STATUS_INDENT, "Groups");
-    const char* groupname;
-    gid_t gid;
+    const char* groupname = NULL;
+    gid_t gid = 0;
 
     for (int i = 0; i < ngroups; i++) {
         gid = (gid_t)groups[i];
@@ -447,13 +449,15 @@ void reload(int argc, char* argv[])
     assert(argc >= 0); // No negative args
     assert(argv); // At least empty
 
-    int c, r;
+    int c = 0;
+    int r = 0;
+    int option_index = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        int option_index = 0;
+        option_index = 0;
         c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
@@ -492,7 +496,7 @@ int _reload_class(const char* classname)
 {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus* bus = NULL;
-    int r;
+    int r = 0;
 
     /* Connect to the system bus */
     r = sd_bus_open_system(&bus);
@@ -530,13 +534,15 @@ void daemon_reload(int argc, char* argv[])
 {
     assert(argc >= 0); // No negative args
     assert(argv); // At least empty
-    int c, r;
+    int c = 0;
+    int r = 0;
+    int option_index = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        int option_index = 0;
+        option_index = 0;
         c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
@@ -580,16 +586,18 @@ void set_property(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname;
-    char* resource_control;
-    char *key, *value;
-    int c, r, leftover_argc;
+    const char* classname = NULL;
+    char* resource_control = NULL;
+    char* key = NULL;
+    char* value = NULL;
+    int c, r, leftover_argc, option_index;
+    c = r = leftover_argc = option_index = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        int option_index = 0;
+        option_index = 0;
         c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
@@ -666,8 +674,10 @@ void cat(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char *classname, *filepath;
-    int c, r, fd;
+    const char* classname = NULL;
+    const char* filepath = NULL;
+    int c, r, fd, option_index;
+    c = r = fd = option_index = 0;
     size_t bufsize = 8096;
     char buf[bufsize];
 
@@ -675,7 +685,7 @@ void cat(int argc, char* argv[])
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        int option_index = 0;
+        option_index = 0;
         c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
@@ -766,18 +776,20 @@ void edit(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname;
-    char *filepath, *editor;
-    int c, r, status, modtime = 0;
-    struct stat classstat;
-    pid_t pid;
-    char* editor_argv[3];
+    const char* classname = NULL;
+    char* filepath = NULL;
+    char* editor = NULL;
+    int c, r, status, modtime, option_index;
+    c = r = status = modtime = option_index = 0;
+    struct stat classstat = { 0 };
+    pid_t pid = 0;
+    char* editor_argv[3] = { NULL };
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        int option_index = 0;
+        option_index = 0;
         c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;

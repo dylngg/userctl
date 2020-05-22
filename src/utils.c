@@ -29,7 +29,7 @@ void errno_die(const char* quote)
 int to_uid(const char* username, uid_t* uid)
 {
     errno = 0;
-    struct passwd* pw;
+    struct passwd* pw = NULL;
     if (_alldigits(username))
         pw = getpwuid((uid_t)strtoll(username, NULL, 10));
     else
@@ -43,7 +43,7 @@ int to_uid(const char* username, uid_t* uid)
 int to_username(uid_t uid, const char** username)
 {
     errno = 0;
-    struct passwd* pw;
+    struct passwd* pw = NULL;
     pw = getpwuid(uid);
     if (!pw)
         return -1;
@@ -54,7 +54,7 @@ int to_username(uid_t uid, const char** username)
 int to_gid(const char* groupname, gid_t* gid)
 {
     errno = 0;
-    struct group* grp;
+    struct group* grp = NULL;
     if (_alldigits(groupname))
         grp = getgrgid((gid_t)strtoll(groupname, NULL, 10));
     else
@@ -68,7 +68,7 @@ int to_gid(const char* groupname, gid_t* gid)
 int to_groupname(gid_t gid, const char** groupname)
 {
     errno = 0;
-    struct group* grp;
+    struct group* grp = NULL;
     grp = getgrgid(gid);
     if (!grp)
         return -1;

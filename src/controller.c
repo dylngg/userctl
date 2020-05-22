@@ -161,10 +161,12 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    char *given_classname, *classname;
-    int r;
-    bool is_alloc_classname;
-    size_t users_size, groups_size;
+    char* given_classname = NULL;
+    char* classname = NULL;
+    int r = 0;
+    bool is_alloc_classname = false;
+    size_t users_size = 0;
+    size_t groups_size = 0;
     void *void_users, *void_groups;
 
     r = sd_bus_message_new_method_return(m, &reply);
@@ -247,9 +249,10 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    char *given_classname, *classname;
-    bool is_alloc_classname;
-    int r;
+    char* given_classname = NULL;
+    char* classname = NULL;
+    bool is_alloc_classname = false;
+    int r = 0;
 
     r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
@@ -335,7 +338,7 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
 {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    int r;
+    int r = 0;
 
     r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
@@ -369,9 +372,9 @@ unlock_cleanup:
 int method_evaluate(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
-    ClassProperties props;
-    uid_t uid;
-    int r;
+    ClassProperties props = { 0 };
+    uid_t uid = 0;
+    int r = 0;
     sd_bus_message* reply = NULL;
 
     r = sd_bus_message_new_method_return(m, &reply);
@@ -411,10 +414,10 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 {
     Context* context = userdata;
     ClassProperties* props;
-    char *given_classname, *classname;
-    char *key, *value;
-    bool is_alloc_classname;
-    int r;
+    char *given_classname, *classname, *key, *value;
+    given_classname = classname = key = value = NULL;
+    bool is_alloc_classname = false;
+    int r = 0;
     sd_bus_message* reply = NULL;
 
     r = sd_bus_message_new_method_return(m, &reply);
@@ -482,9 +485,9 @@ _active_uids_and_class(Vector* uids, Vector* classes, Vector* props_list)
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const uid_t uid;
-    int r;
-    ClassProperties props;
+    uid_t uid = 0;
+    int r = 0;
+    ClassProperties props = { 0 };
 
     /* Connect to the system bus */
     r = sd_bus_open_system(&bus);
@@ -535,9 +538,9 @@ cleanup:
 int match_user_new(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
-    ClassProperties props;
-    int r;
-    uid_t uid;
+    ClassProperties props = { 0 };
+    int r = 0;
+    uid_t uid = 0;
 
     r = sd_bus_message_read(m, "uo", &uid, NULL);
     if (r < 0)
@@ -572,9 +575,9 @@ static int
 _enforce_controls_on_class(const char* filepath, Vector* props_list)
 {
     Vector active_uids, corresponding_classes;
-    ClassProperties* evaluated_props;
-    uid_t uid;
-    size_t nuids;
+    ClassProperties* evaluated_props = NULL;
+    uid_t uid = 0;
+    size_t nuids = 0;
     int r = 0;
 
     create_vector(&active_uids, sizeof(uid_t));
@@ -604,13 +607,15 @@ _enforce_controls_on_class(const char* filepath, Vector* props_list)
 static int
 _enforce_controls(uid_t uid, HashMap* controls)
 {
-    int r = 0;
-    pid_t pid;
-    int status, arglen;
-    char* arg;
-    char** argv;
-    const char *key, *value;
+    int r, status, arglen;
+    r = status = arglen = 0;
+    pid_t pid = 0;
+    char* arg = NULL;
+    char** argv = NULL;
+    const char* key = NULL;
+    const char* value = NULL;
     size_t ncontrols, argc_prefix, argc, n;
+    ncontrols = argc_prefix = argc = n = 0;
 
     printf("Enforcing resource controls on %d\n", uid);
 

@@ -27,7 +27,7 @@ int create_hashmap(HashMap* map, size_t max_size)
 void destroy_hashmap(HashMap* map)
 {
     assert(map);
-    char** key;
+    char** key = NULL;
 
     while ((key = iter_vector(&map->keys))) {
         // Safe to modify things because hashmap owns things
@@ -43,8 +43,8 @@ void destroy_hashmap(HashMap* map)
 int add_hashmap_entry(HashMap* map, char* key, char* value)
 {
     assert(map);
-    int r;
-    char* tmp;
+    int r = 0;
+    char* tmp = NULL;
     ENTRY* entry_ptr = NULL;
     ENTRY entry = { key, NULL };
 
@@ -97,7 +97,7 @@ get_hashmap_count(HashMap* map)
 void iter_hashmap(HashMap* map, const char** key, const char** value)
 {
     assert(map);
-    char** map_key;
+    char** map_key = NULL;
 
     map_key = iter_vector(&map->keys);
     if (!map_key) {
@@ -112,5 +112,4 @@ void iter_hashmap_end(HashMap* map)
 {
     assert(map);
     iter_vector_end(&map->keys);
-    ;
 }
