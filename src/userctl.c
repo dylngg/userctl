@@ -9,7 +9,7 @@ int main(int argc, char* argv[]) {
     static const Command cmds[] = {
 //        {"add-group", add_group}
 //        {"add-user", add_user},
-//        {"edit", edit},
+        {"edit", edit},
         {"cat", cat},
         {"eval", eval},
         {"-h", show_help},

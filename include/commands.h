@@ -76,7 +76,6 @@ void set_property(int argc, char* argv[]);
  */
 void show_set_property_help();
 
-
 /*
  * Prints out the class file.
  */
@@ -87,5 +86,14 @@ void cat(int argc, char* argv[]);
  */
 void show_cat_help();
 
+/*
+ * Opens up an editor for a class and reloads the class upon exit.
+ */
+void edit(int argc, char* argv[]);
+
+/*
+ * Prints out the help for the edit command.
+ */
+void show_edit_help();
 
 #endif // COMMANDS_H

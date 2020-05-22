@@ -67,7 +67,7 @@ static int _load_props_list(char* dir, char* ext, Vector* props_list) {
 
     for (int i = 0; i < num_files; i++) {
         ClassProperties props;
-        if (create_class(dir, class_files[i]->d_name, &props) < 1)
+        if (create_class(dir, class_files[i]->d_name, &props) >= 0)
             append_vector_item(props_list, &props);
 
         free(class_files[i]);

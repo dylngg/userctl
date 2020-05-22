@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
 
@@ -37,6 +38,7 @@ void _print_class(const char* filepath);
 void _print_class_status(Class* class, bool print_uids, bool print_gids);
 void _print_status_user_line(const uid_t* users, int nusers, bool print_uids);
 void _print_status_group_line(const gid_t* groups, int ngroups, bool print_gids);
+int _reload_class(const char *classname);
 
 
 static const char* service_path = "/org/dylangardner/userctl";
@@ -453,10 +455,6 @@ void reload(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
 
-    sd_bus_error error = SD_BUS_ERROR_NULL;
-    sd_bus_message* msg = NULL;
-    sd_bus* bus = NULL;
-    const char* classname;
     int c, r;
 
     while(true) {
@@ -488,7 +486,19 @@ void reload(int argc, char* argv[]) {
     }
     if (optind >= argc)
         die("No class given\n");
-    classname = argv[optind];
+
+    r = _reload_class(argv[optind]);
+    if (r < 0) exit(1);
+}
+
+/*
+ * Reloads either the daemon or a specific class, depending on whether the
+ * classname is NULL or not.
+ */
+int _reload_class(const char *classname) {
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus* bus = NULL;
+    int r;
 
     /* Connect to the system bus */
     r = sd_bus_open_system(&bus);
@@ -497,17 +507,31 @@ void reload(int argc, char* argv[]) {
         goto cleanup;
     }
 
-    r = sd_bus_call_method(
-        bus,
-        service_name,
-        service_path,
-        service_name,
-        "Reload",
-        &error,
-        &msg,
-        "s",
-        classname
-    );
+    if (classname) {
+        r = sd_bus_call_method(
+            bus,
+            service_name,
+            service_path,
+            service_name,
+            "Reload",
+            &error,
+            NULL,
+            "s",
+            classname
+        );
+    }
+    else {
+        r = sd_bus_call_method(
+            bus,
+            service_name,
+            service_path,
+            service_name,
+            "DaemonReload",
+            &error,
+            NULL,
+            NULL
+        );
+    }
     if (r < 0) {
         fprintf(stderr, "%s\n", error.message);
         goto cleanup;
@@ -516,6 +540,7 @@ void reload(int argc, char* argv[]) {
 cleanup:
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
+    return r < 0 ? -1 : 0;
 }
 
 void show_reload_help() {
@@ -529,10 +554,6 @@ void show_reload_help() {
 void daemon_reload(int argc, char* argv[]) {
     assert(argc >= 0);  // No negative args
     assert(argv);  // At least empty
-
-    sd_bus_error error = SD_BUS_ERROR_NULL;
-    sd_bus_message* msg = NULL;
-    sd_bus* bus = NULL;
     int c, r;
 
     while(true) {
@@ -563,31 +584,8 @@ void daemon_reload(int argc, char* argv[]) {
         exit(0);
     }
 
-    /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
-    if (r < 0) {
-        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
-        goto cleanup;
-    }
-
-    r = sd_bus_call_method(
-        bus,
-        service_name,
-        service_path,
-        service_name,
-        "DaemonReload",
-        &error,
-        &msg,
-        NULL
-    );
-    if (r < 0) {
-        fprintf(stderr, "%s\n", error.message);
-        goto cleanup;
-    }
-
-cleanup:
-    sd_bus_error_free(&error);
-    sd_bus_unref(bus);
+    r = _reload_class(NULL);
+    if (r < 0) exit(1);
 }
 
 void show_daemon_reload_help() {
@@ -701,8 +699,7 @@ void cat(int argc, char* argv[]) {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname;
-    Class class = {0};
+    const char* classname, *filepath;
     int c, r, fd;
     size_t bufsize = 8096;
     char buf[bufsize];
@@ -765,7 +762,7 @@ void cat(int argc, char* argv[]) {
 
         r = sd_bus_message_read(
             msg, "s",
-            &class.filepath
+            &filepath
         );
         if (r < 0) {
             fprintf(stderr, "Internal error: Failed to parse class from userctld %s\n",
@@ -773,7 +770,7 @@ void cat(int argc, char* argv[]) {
             continue;
         }
 
-        fd = open(class.filepath, O_RDONLY);
+        fd = open(filepath, O_RDONLY);
         if (fd < 0) {
             perror("Failed to open class file");
             continue;
@@ -801,6 +798,141 @@ void show_cat_help() {
     printf(
         "userctl cat [OPTIONS...] [TARGET] \n\n"
         "Prints out the class file.\n"
+        "  -h --help\t\tShow this help\n"
+    );
+}
+
+void edit(int argc, char* argv[]) {
+    assert(argc >= 0);  // No negative args
+    assert(argv);  // At least empty
+
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+    const char* classname;
+    char *filepath, *editor;
+    int c, r, status;
+    pid_t pid;
+    char *editor_argv[3];
+
+    while(true) {
+        static struct option long_options[] = {
+            {"help", no_argument, &help, 'h'},
+            {0}
+        };
+
+        int option_index = 0;
+        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        if (c == -1) break;
+        switch(c) {
+            case 'h':
+                help = 1;
+                break;
+            case '?':
+                stop = 1;
+                break;
+            default:
+                continue;
+        }
+    }
+    // Abort, missing/wrong args (getopt will print errors out)
+    if (stop) exit(1);
+
+    if (help) {
+        show_edit_help();
+        exit(0);
+    }
+
+    if (optind >= argc)
+        die("No class given\n");
+    classname = argv[optind];
+
+    /* Connect to the system bus */
+    r = sd_bus_open_system(&bus);
+    if (r < 0) {
+        fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
+        goto cleanup;
+    }
+
+    r = sd_bus_call_method(
+        bus,
+        service_name,
+        service_path,
+        service_name,
+        "GetClass",
+        &error,
+        &msg,
+        "s",
+        classname
+    );
+    if (r < 0) {
+        fprintf(stderr, "%s\n", error.message);
+        goto cleanup;
+    }
+
+    r = sd_bus_message_read(
+        msg, "s",
+        &filepath
+    );
+    if (r < 0) {
+        fprintf(stderr, "Internal error: Failed to parse class from userctl %s\n",
+                strerror(-r));
+        goto cleanup;
+    }
+    if (access(filepath, W_OK)) {
+        fprintf(stderr, "Cannot open %s for writing.\n", filepath);
+        goto cleanup;
+    }
+
+    editor = secure_getenv("VISUAL");
+    if (editor) goto exec;
+    editor = secure_getenv("EDITOR");
+    if (editor) goto exec;
+    editor = "/usr/bin/vi";
+    if (!access(editor, X_OK)) goto exec;  // Backwards, but correct
+    die("Could not edit the given class. Set EDITOR or VISUAL.");
+
+exec:
+    pid = fork();
+    if (pid == -1) {
+        perror("Failed to fork and edit class");
+        r = -1;
+        goto cleanup;
+    }
+    if (pid == 0) {
+        editor_argv[0] = editor;
+        editor_argv[1] = filepath;
+        editor_argv[2] = NULL;
+        if (execv(editor, editor_argv) == -1) {
+            perror("Failed to exec and edit class");
+            goto cleanup;
+        }
+    }
+
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "%s %s exited with non-zero status code: %d\n", editor,
+                filepath, WEXITSTATUS(status));
+    }
+    else if (WIFSIGNALED(status) && WTERMSIG(status) != 0) {
+        fprintf(stderr, "%s %s recieved a signal: %s\n", editor, filepath,
+                strsignal(WTERMSIG(status)));
+    }
+
+    r = _reload_class(classname);
+    if (r < 0) {
+        puts("Failed to reload class");
+    }
+
+cleanup:
+    sd_bus_error_free(&error);
+    sd_bus_unref(bus);
+}
+
+void show_edit_help() {
+    printf(
+        "userctl edit [OPTIONS...] [TARGET] \n\n"
+        "Opens up an editor for a class and reloads the class upon exit.\n"
         "  -h --help\t\tShow this help\n"
     );
 }
