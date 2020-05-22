@@ -2,7 +2,7 @@
 CC = gcc
 
 # userctl options
-CFLAGS += -O2 -Wall -Wextra -Wformat -Werror=implicit-function-declaration -Wformat-security -Werror=format-security -fstack-protector-strong -pedantic -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -g
+CFLAGS += -O2 -Wall -Wextra -Wformat -Werror=implicit-function-declaration -Wformat-security -Werror=format-security -fstack-protector-strong -pedantic -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -O2
 LIBS += -lsystemd -pthread
 INCLUDE_FLAGS += -Iinclude
 SRCDIR = src
