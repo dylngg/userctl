@@ -18,10 +18,10 @@
 
 #include "utils.h"
 #include "vector.h"
+#include "hashmap.h"
 #include "classparser.h"
 #include "macros.h"
 
-int _parse_line(char* line, char** restrict key, char** restrict value);
 int _insert_class_prop(ClassProperties* prop, char* restrict key, char* restrict value);
 void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid);
 void _print_line_error(unsigned long long linenum, const char* restrict filepath,
@@ -31,28 +31,11 @@ bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
 bool _uid_finder(void *void_uid, va_list args);
 bool _gids_finder(void *void_gid, va_list args);
 
-void destroy_control(ResourceControl* control) {
-    free(control->key);
-    free(control->value);
-}
-
-void create_control(ResourceControl* control, char *key, char *value) {
-    control->key = strdup(key);
-    control->value = strdup(value);
-    if (!control->key || !control->value) malloc_error_exit();
-}
-
 void destroy_class(ClassProperties* props) {
-    size_t ncontrols;
-
     free((char *) props->filepath);
     destroy_vector(&props->users);
     destroy_vector(&props->groups);
-
-    ncontrols = get_vector_count(&props->controls);
-    for (size_t n = 0; n < ncontrols; n++)
-        destroy_control(get_vector_item(&props->controls, n));
-    destroy_vector(&props->controls);
+    destroy_hashmap(&props->controls);
 }
 
 int create_class(const char *dir, const char *filename, ClassProperties *props) {
@@ -75,7 +58,7 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
     if (!props->filepath) malloc_error_exit();
     if ((create_vector(&props->users, sizeof (uid_t))) < 0) return -1;
     if ((create_vector(&props->groups, sizeof (gid_t))) < 0) return -1;
-    if ((create_vector(&props->controls, sizeof (ResourceControl))) < 0) return -1;
+    if ((create_hashmap(&props->controls, MAX_CONTROLS)) < 0) return -1;
 
     FILE* classfile = fopen(filepath, "r");
     if (classfile) {
@@ -100,7 +83,7 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
                 _print_line_error(linenum, filepath, "No key=value found. Ignoring.");
                 continue;
             }
-            if (_parse_line(end, &key, &value) == -1) {
+            if (parse_key_value(end, &key, &value) == -1) {
                 _print_line_error(linenum, filepath, "Failed to parse key=value");
                 errors = true;
                 continue;
@@ -132,7 +115,7 @@ int parse_classfile(const char* filepath, ClassProperties* props) {
  * Parses the given line into a key value pair. If there is a issue with
  * parsing, returns -1, sets key and value to NULL.
  */
-int _parse_line(char* line, char** restrict key, char** restrict value) {
+int parse_key_value(char* line, char** restrict key, char** restrict value) {
     *value = NULL;
     *key = strsep(&line, "=");
     *value = line;
@@ -172,10 +155,7 @@ int _insert_class_prop(ClassProperties* props, char* restrict key, char* restric
         _parse_uids_or_gids(value, props, true);
     }
     else {
-        // Assume it's a resource control
-        ResourceControl control;
-        create_control(&control, key, value);
-        append_vector_item(&props->controls, &control);
+        add_hashmap_entry(&props->controls, key, value);
     }
     return 0;
 }
@@ -256,37 +236,29 @@ int _is_classfile(const struct dirent* dir) {
 int evaluate(uid_t uid, Vector *props_list, ClassProperties* props) {
     assert(props_list);
     assert(props);
-
-    errno = 0;
-    struct passwd* pw = getpwuid(uid);
-    if (!pw) return -1;
-
-    int ngroups = (int) sysconf(_SC_NGROUPS_MAX);
-    if (ngroups <= 0) ngroups = 65536;  // Good enough
-    gid_t* groups = malloc(sizeof *groups * ngroups);
-    if (groups == NULL) malloc_error_exit();
-    if (getgrouplist(pw->pw_name, pw->pw_gid, groups, &ngroups) < 0)
-        return -1;
-
+    ClassProperties *tmp_props, *choosen_class = NULL;
+    gid_t *groups;
+    int ngroups = 0, props_match_count = 0;
     double highest_priority = -INFINITY;
-    int props_match_count = 0, choosen_index = -1;
-    size_t nprops = get_vector_count(props_list);
-    ClassProperties *tmp_props;
 
-    for (size_t n = 0; n < nprops; n++) {
-        tmp_props = get_vector_item(props_list, n);
+    if (get_groups(uid, &groups, &ngroups) < 0) {
+        puts("Failed to get group list");
+        return -1;
+    }
 
+    while ((tmp_props = iter_vector(props_list))) {
         // Select first if same priority
         if (tmp_props->priority > highest_priority &&
                 _in_class(uid, groups, ngroups, tmp_props)) {
             highest_priority = tmp_props->priority;
-            choosen_index = (int) n;
+            choosen_class = tmp_props;
             props_match_count++;
         }
     }
+    iter_vector_end(props_list);
     free(groups);
 
-    if (choosen_index != -1) *props = *((ClassProperties *) get_vector_item(props_list, (size_t) choosen_index));
+    if (choosen_class) *props = *choosen_class;
     return props_match_count;
 }
 

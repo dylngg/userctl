@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
+#define _GNU_SOURCE
 
 #include <systemd/sd-bus.h>
 
@@ -48,6 +49,11 @@ int method_reload_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
  * Reloads the daemon.
  */
 int method_daemon_reload(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+
+/*
+ * Sets a transient resource control on a class.
+ */
+int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
 
 /*
  * Enforces a class on the new user.

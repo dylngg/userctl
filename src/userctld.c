@@ -21,6 +21,7 @@ static const sd_bus_vtable userctld_vtable[] = {
     SD_BUS_METHOD("ListClasses", NULL, "as", method_list_classes, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Reload", "s", NULL, method_reload_class, 0),
     SD_BUS_METHOD("DaemonReload", NULL, NULL, method_daemon_reload, 0),
+    SD_BUS_METHOD("SetProperty", "sss", NULL, method_set_property, 0),
     SD_BUS_PROPERTY("DefaultPath", "s", NULL, offsetof(Context, classdir), 0),
     SD_BUS_PROPERTY("DefaultExtension", "s", NULL, offsetof(Context, classext), 0),
     SD_BUS_VTABLE_END
