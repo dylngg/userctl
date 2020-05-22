@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0
 #ifndef COMMANDS_H
 #define COMMANDS_H
-#include <stdbool.h>
 #include <dirent.h>
+#include <stdbool.h>
 
-typedef struct {
+typedef struct
+{
     const char* cmd;
-    void (* const dispatch)(int argc, char* argv[]);
+    void (*const dispatch)(int argc, char* argv[]);
 } Command;
 
 /*

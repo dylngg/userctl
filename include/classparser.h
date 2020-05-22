@@ -4,17 +4,18 @@
 #define _GNU_SOURCE
 
 #include <dirent.h>
+#include <pwd.h>
 #include <stdbool.h>
 #include <sys/types.h>
-#include <pwd.h>
 
-#include "vector.h"
 #include "hashmap.h"
+#include "vector.h"
 
 #define MAX_CONTROLS 512
 
 /* The properties of a class */
-typedef struct {
+typedef struct
+{
     const char* filepath;
     bool shared;
     double priority;
@@ -33,7 +34,7 @@ void destroy_class(ClassProperties* props);
  * If there was an issue parsing the class file, returns a -1. In that case,
  * the result of props is undefined. Otherwise, a zero is returned.
  */
-int create_class(const char *dir, const char *filename, ClassProperties *props);
+int create_class(const char* dir, const char* filename, ClassProperties* props);
 
 /*
  * Parses a class file and passes a ClassProperties struct into props. If
@@ -64,7 +65,8 @@ int write_classfile(const char* filename, ClassProperties* props);
  * Note: dirent's d_type may be a DT_UNKNOWN. Do appropriate checks before
  * reading from it.
  */
-int list_class_files(const char* dir, const char* ext, struct dirent*** class_files, int* num_files);
+int list_class_files(const char* dir, const char* ext,
+    struct dirent*** class_files, int* num_files);
 
 /*
  * Evaluates a user for what class they belong to. If there are multiple
@@ -75,6 +77,6 @@ int list_class_files(const char* dir, const char* ext, struct dirent*** class_fi
  * the user belongs to. If a -1 is returned, the issue should be looked up via
  * errno.
  */
-int evaluate(uid_t uid, Vector *props_list, ClassProperties* props);
+int evaluate(uid_t uid, Vector* props_list, ClassProperties* props);
 
 #endif // CLASSPARSER_H

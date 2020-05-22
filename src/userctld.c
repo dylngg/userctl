@@ -15,28 +15,32 @@ void show_help();
 static void* class_enforcer(void* vargp);
 
 static const sd_bus_vtable userctld_vtable[] = {
-    SD_BUS_VTABLE_START(0),
-    SD_BUS_METHOD("Evaluate", "u", "s", method_evaluate, SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_METHOD("GetClass", "s", "sbdauau", method_get_class, SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_METHOD("ListClasses", NULL, "as", method_list_classes, SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_VTABLE_START(0), SD_BUS_METHOD("Evaluate", "u", "s", method_evaluate, SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD("GetClass", "s", "sbdauau", method_get_class,
+        SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD("ListClasses", NULL, "as", method_list_classes,
+        SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Reload", "s", NULL, method_reload_class, 0),
     SD_BUS_METHOD("DaemonReload", NULL, NULL, method_daemon_reload, 0),
     SD_BUS_METHOD("SetProperty", "sss", NULL, method_set_property, 0),
     SD_BUS_PROPERTY("DefaultPath", "s", NULL, offsetof(Context, classdir), 0),
-    SD_BUS_PROPERTY("DefaultExtension", "s", NULL, offsetof(Context, classext), 0),
+    SD_BUS_PROPERTY("DefaultExtension", "s", NULL, offsetof(Context, classext),
+        0),
     SD_BUS_VTABLE_END
 };
 
 static const char* service_path = "/org/dylangardner/userctl";
 static const char* service_name = "org.dylangardner.userctl";
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     pthread_t tid;
-    sd_bus *bus = NULL;
+    sd_bus* bus = NULL;
     int r;
 
     Context* context = malloc(sizeof *context);
-    if (!context) malloc_error_exit();
+    if (!context)
+        malloc_error_exit();
     if ((init_context(context)) < 0)
         errno_die("Failed to initialize userctld");
 
@@ -57,14 +61,8 @@ int main(int argc, char* argv[]) {
         goto cleanup;
     }
 
-    r = sd_bus_add_object_vtable(
-        bus,
-        NULL,
-        service_path,
-        service_name,
-        userctld_vtable,
-        context
-    );
+    r = sd_bus_add_object_vtable(bus, NULL, service_path, service_name,
+        userctld_vtable, context);
     if (r < 0) {
         fprintf(stderr, "Failed to issue method call: %s\n", strerror(-r));
         goto cleanup;
@@ -82,9 +80,10 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "Failed to process bus: %s\n", strerror(-r));
             goto cleanup;
         }
-        if (r > 0) continue;
+        if (r > 0)
+            continue;
 
-        r = sd_bus_wait(bus, (uint64_t) -1);
+        r = sd_bus_wait(bus, (uint64_t)-1);
         if (r < 0) {
             fprintf(stderr, "Failed to wait on bus: %s\n", strerror(-r));
             goto cleanup;
@@ -103,7 +102,9 @@ cleanup:
 /*
  * Listens to signals on dbus for when to apply classes on users.
  */
-static void* class_enforcer(void* vargp) {
+static void*
+class_enforcer(void* vargp)
+{
     assert(vargp);
 
     sd_bus* bus = NULL;
@@ -129,23 +130,15 @@ static void* class_enforcer(void* vargp) {
         goto cleanup;
     }
 
-    const char* signal_match = (
-        "type='signal',"
-        "sender='org.freedesktop.login1',"
-        "path='/org/freedesktop/login1',"
-        "interface='org.freedesktop.login1.Manager',"
-        "member='UserNew'"
-    );
+    const char* signal_match = ("type='signal',"
+                                "sender='org.freedesktop.login1',"
+                                "path='/org/freedesktop/login1',"
+                                "interface='org.freedesktop.login1.Manager',"
+                                "member='UserNew'");
 
     // In systemd 237+, sdbus has sd_bus_match_signal, but to remain
     // compatible with older versions we just use sd_bus_match
-    r = sd_bus_add_match(
-        bus,
-        NULL,
-        signal_match,
-        match_user_new,
-        context
-    );
+    r = sd_bus_add_match(bus, NULL, signal_match, match_user_new, context);
 
     if (r < 0) {
         fprintf(stderr, "Failed to watch for for new users: %s", strerror(-r));
@@ -164,11 +157,10 @@ cleanup:
     return NULL;
 }
 
-
-void show_help() {
-    printf(
-        "userctld [OPTIONS...]\n\n"
-        "Sets configurable and persistent resource controls on users and groups.\n\n"
-        "  -h --help\t\tShow this help.\n\n"
-    );
+void show_help()
+{
+    printf("userctld [OPTIONS...]\n\n"
+           "Sets configurable and persistent resource controls on users and "
+           "groups.\n\n"
+           "  -h --help\t\tShow this help.\n\n");
 }

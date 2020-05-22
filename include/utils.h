@@ -2,8 +2,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <sys/types.h>
 #include <stdbool.h>
+#include <sys/types.h>
 
 /*
  * Quotes last words into stderr and dies (with exit code of 1).
@@ -51,7 +51,7 @@ int to_groupname(gid_t gid, const char** groupname);
  * Returns a list of gids belonging to the user. If there was an issue getting
  * groups, -1 is returned. Otherwise, 0 is returned.
  */
-int get_groups(uid_t uid, gid_t **gids, int *ngids);
+int get_groups(uid_t uid, gid_t** gids, int* ngids);
 
 /*
  * Moves the string pointer to after the leading whitespace and adds a NULL
@@ -68,7 +68,8 @@ bool has_ext(const char* restrict string, const char* restrict ext);
 /*
  * Returns a malloced filepath for the given filename at the given directory.
  */
-const char* get_filepath(const char* restrict dir, const char* restrict filename);
+const char* get_filepath(const char* restrict dir,
+    const char* restrict filename);
 
 /*
  * Exits if there is a malloc issue.
