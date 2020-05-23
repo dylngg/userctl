@@ -30,6 +30,8 @@ int ensure_vector_capacity(Vector* vec, size_t capacity)
 {
     assert(vec);
 
+    // Always keep one element at the end for the pretend_vector func
+    capacity++;
     if (vec->capacity - vec->count > capacity)
         return 0;
 
@@ -46,7 +48,8 @@ int append_vector_item(Vector* vec, const void* item)
     assert(vec);
     assert(item);
 
-    if (vec->capacity - vec->count < 1) {
+    // Always keep one element at the end for the pretend_vector func
+    if (vec->capacity - vec->count < 2) {
         if (ensure_vector_capacity(vec, vec->capacity * 2) < 0)
             return -1;
     }
@@ -107,6 +110,14 @@ void iter_vector_end(Vector* vec)
 {
     assert(vec);
     vec->iter_count = 0;
+}
+
+void* pretend_vector_is_array(Vector* vec)
+{
+    assert(vec);
+    // We always ensure we have at least one empty place at the end
+    memset(vec->data + vec->count * vec->item_size, 0, vec->item_size);
+    return vec->data;
 }
 
 int convert_vector_to_array(Vector* vec, void** array, size_t* size)

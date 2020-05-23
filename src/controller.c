@@ -199,35 +199,19 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     if (r < 0)
         goto unlock_cleanup_classpath;
 
-    size_t users_size = 0;
-    void* void_users;
-    r = convert_vector_to_array(&props->users, &void_users, &users_size);
-    if (r < 0)
-        goto unlock_cleanup_classpath;
-    uid_t* users = (uid_t*)void_users;
-
-    size_t groups_size = 0;
-    void* void_groups;
-    r = convert_vector_to_array(&props->groups, &void_groups, &groups_size);
-    if (r < 0)
-        goto unlock_cleanup_users;
-    gid_t* groups = (gid_t*)void_groups;
-
+    uid_t* users = pretend_vector_is_array(&props->users);
+    size_t users_size = get_vector_count(&props->users) * sizeof *users;
     r = sd_bus_message_append_array(reply, 'u', users, users_size);
     if (r < 0)
-        goto unlock_cleanup_groups;
+        goto unlock_cleanup_classpath;
 
+    gid_t* groups = pretend_vector_is_array(&props->groups);
+    size_t groups_size = get_vector_count(&props->groups) * sizeof *groups;
     r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
     if (r < 0)
-        goto unlock_cleanup_groups;
+        goto unlock_cleanup_classpath;
 
     r = sd_bus_send(NULL, reply, NULL);
-
-unlock_cleanup_groups:
-    free(groups);
-
-unlock_cleanup_users:
-    free(users);
 
 unlock_cleanup_classpath:
     free((char*)classpath);

@@ -70,6 +70,14 @@ void* iter_vector(Vector* vec);
 void iter_vector_end(Vector* vec);
 
 /*
+ * The given vector will rearrage itself to be a NULL terminated fixed-sized
+ * array using the existing internal data allocation. This is so that the
+ * Vector can be passed to functions that require NULL terminated arrays, but
+ * don't modify the array itself.
+ */
+void* pretend_vector_is_array(Vector* vec);
+
+/*
  * Creates a new single allocation array (ending in NULL) from the given
  * vector. Returns -1 if there was an error (and errno should be looked up),
  * otherwise 0.
