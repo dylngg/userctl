@@ -17,6 +17,7 @@ int create_vector(Vector* vec, size_t item_size)
     vec->data = malloc(item_size * vec->capacity);
     if (!vec->data)
         return -1;
+
     return 0;
 }
 
@@ -49,10 +50,9 @@ int append_vector_item(Vector* vec, const void* item)
     assert(item);
 
     // Always keep one element at the end for the pretend_vector func
-    if (vec->capacity - vec->count < 2) {
+    if (vec->capacity - vec->count < 2)
         if (ensure_vector_capacity(vec, vec->capacity * 2) < 0)
             return -1;
-    }
 
     memcpy(vec->data + vec->count * vec->item_size, item, vec->item_size);
     vec->count++;
@@ -133,7 +133,7 @@ int convert_vector_to_array(Vector* vec, void** array, size_t* size)
     memset(tmp_array + item_size * tmp_count, 0, item_size);
 
     for (size_t i = 0; i < tmp_count; i++) {
-        void* item = get_vector_item(vec, i);
+        const void* item = get_vector_item(vec, i);
         memcpy(tmp_array + i * item_size, item, item_size);
     }
     *array = (void*)tmp_array;

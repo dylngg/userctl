@@ -12,6 +12,7 @@
 #include "vector.h"
 
 #define MAX_CONTROLS 512
+#define MAX_CLASSES 64
 
 /* The properties of a class */
 typedef struct
@@ -71,6 +72,6 @@ int list_class_files(const char* dir, const char* ext,
  * the user belongs to. If a -1 is returned, the issue should be looked up via
  * errno.
  */
-int evaluate(uid_t uid, Vector* props_list, ClassProperties* props);
+int evaluate(uid_t uid, HashMap* classes, ClassProperties* props);
 
 #endif // CLASSPARSER_H

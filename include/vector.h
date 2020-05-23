@@ -16,7 +16,7 @@ typedef struct Vector {
     size_t iter_count;
 } Vector;
 
-typedef bool (*finder_t)(void*, va_list);
+typedef bool (*finder_t)(const void*, va_list);
 
 /*
  * Passes back a vector and returns a 0 if the creation was successful, or -1

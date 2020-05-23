@@ -5,10 +5,10 @@
 
 #include <systemd/sd-bus.h>
 
-#include "vector.h"
+#include "hashmap.h"
 
 typedef struct Context {
-    Vector props_list;
+    HashMap classes;
     char* classdir;
     char* classext;
 } Context;

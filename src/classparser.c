@@ -30,8 +30,8 @@ void _print_line_error(unsigned long long linenum,
     const char* restrict desc);
 int _is_classfile(const struct dirent* dir);
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
-bool _uid_finder(void* void_uid, va_list args);
-bool _gids_finder(void* void_gid, va_list args);
+bool _uid_finder(const void* void_uid, va_list args);
+bool _gids_finder(const void* void_gid, va_list args);
 
 void destroy_class(ClassProperties* props)
 {
@@ -66,7 +66,7 @@ int parse_classfile(const char* filepath, ClassProperties* props)
         return -1;
     if ((create_vector(&props->groups, sizeof(gid_t))) < 0)
         return -1;
-    if ((create_hashmap(&props->controls, MAX_CONTROLS)) < 0)
+    if ((create_hashmap(&props->controls, sizeof(char*), MAX_CONTROLS)) < 0)
         return -1;
 
     FILE* classfile = fopen(filepath, "r");
@@ -238,11 +238,10 @@ int _is_classfile(const struct dirent* dir)
         (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN) && has_ext((char*)dir->d_name, curr_ext));
 }
 
-int evaluate(uid_t uid, Vector* props_list, ClassProperties* props)
+int evaluate(uid_t uid, HashMap* classes, ClassProperties* props)
 {
-    assert(props_list);
+    assert(classes);
     assert(props);
-    ClassProperties* tmp_props = NULL;
     ClassProperties* choosen_class = NULL;
     gid_t* groups = NULL;
     int ngroups = 0;
@@ -254,7 +253,8 @@ int evaluate(uid_t uid, Vector* props_list, ClassProperties* props)
         return -1;
     }
 
-    while ((tmp_props = iter_vector(props_list))) {
+    ClassProperties* tmp_props = NULL;
+    while ((tmp_props = iter_hashmap_values(classes))) {
         // Select first if same priority
         if (tmp_props->priority > highest_priority && _in_class(uid, groups, ngroups, tmp_props)) {
             highest_priority = tmp_props->priority;
@@ -262,7 +262,7 @@ int evaluate(uid_t uid, Vector* props_list, ClassProperties* props)
             props_match_count++;
         }
     }
-    iter_vector_end(props_list);
+    iter_hashmap_end(classes);
     free(groups);
 
     if (choosen_class)
@@ -289,11 +289,11 @@ bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props)
  * second argument, in a vector of uids.
  */
 inline bool
-_uid_finder(void* void_uid, va_list args)
+_uid_finder(const void* void_uid, va_list args)
 {
     assert(void_uid);
 
-    uid_t* uid = void_uid;
+    const uid_t* uid = void_uid;
     uid_t our_uid = va_arg(args, uid_t);
     return our_uid == *uid;
 }
@@ -304,7 +304,7 @@ _uid_finder(void* void_uid, va_list args)
  * are in a vector of gids.
  */
 inline bool
-_gids_finder(void* void_gid, va_list args)
+_gids_finder(const void* void_gid, va_list args)
 {
     assert(void_gid);
 
