@@ -79,8 +79,7 @@ int parse_classfile(const char* filepath, ClassProperties* props)
         char* value = NULL;
 
         while ((end = fgets(buf, sizeof buf / sizeof *buf, classfile))) {
-            if (linenum < UINT_MAX)
-                linenum++;
+            linenum++;
 
             // Ignore blank lines
             if (!strcmp(end, "\n"))
