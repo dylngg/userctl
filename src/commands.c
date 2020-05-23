@@ -81,16 +81,13 @@ void list(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    char** classes = NULL;
-    int c = 0;
-    int r = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 1 },
             { 0 } };
 
         int option_index = 0;
-        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -114,7 +111,7 @@ void list(int argc, char* argv[])
     }
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto cleanup;
@@ -127,6 +124,7 @@ void list(int argc, char* argv[])
             error.message);
         goto cleanup;
     }
+    char** classes = NULL;
     r = sd_bus_message_read_strv(msg, &classes);
     if (r < 0) {
         fprintf(stderr,
@@ -170,16 +168,13 @@ void eval(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* filepath = "";
-    int c = 0, r = 0;
-    uid_t uid = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 1 },
             { 0 } };
 
         int option_index = 0;
-        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -201,7 +196,10 @@ void eval(int argc, char* argv[])
     if (help) {
         show_eval_help();
         exit(0);
-    } else if (optind < argc) {
+    }
+
+    uid_t uid = 0;
+    if (optind < argc) {
         const char* user = argv[optind];
         if (to_uid(user, &uid) == -1) {
             if (errno != 0)
@@ -217,19 +215,20 @@ void eval(int argc, char* argv[])
             errno_die("Failed to get passwd record of effective uid\n");
     }
 
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto cleanup;
     }
 
     r = sd_bus_call_method(bus, service_name, service_path, service_name,
-        "Evaluate", &error, &msg, "u", (uid_t)uid);
+        "Evaluate", &error, &msg, "u", uid);
     if (r < 0) {
         fprintf(stderr, "%s\n", error.message);
         goto cleanup;
     }
 
+    const char* filepath = NULL;
     r = sd_bus_message_read_basic(msg, 's', &filepath);
     if (r < 0) {
         fprintf(stderr, "Failed to parse class from userctld: %s\n", strerror(-r));
@@ -257,10 +256,7 @@ void status(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname = NULL;
-    Class class = { 0 };
-    static int c, r, print_gids, print_uids;
-    c = r = print_gids = print_uids = 0;
+    static int print_gids, print_uids;
 
     while (true) {
         static struct option long_options[] = {
@@ -271,7 +267,7 @@ void status(int argc, char* argv[])
         };
 
         int option_index = 0;
-        c = getopt_long(argc, argv, "ghu", long_options, &option_index);
+        int c = getopt_long(argc, argv, "ghu", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -301,10 +297,10 @@ void status(int argc, char* argv[])
     }
     if (optind >= argc)
         die("No class given\n");
-    classname = argv[optind];
+    const char* classname = argv[optind];
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto cleanup;
@@ -316,6 +312,8 @@ void status(int argc, char* argv[])
         fprintf(stderr, "%s\n", error.message);
         goto cleanup;
     }
+
+    Class class = { 0 };
     r = sd_bus_message_read(msg, "sbd", &class.filepath, &class.shared,
         &class.priority);
     if (r < 0) {
@@ -374,11 +372,10 @@ void _print_status_user_line(const uid_t* users, int nusers, bool print_uids)
     assert(users);
 
     printf("%*s: ", STATUS_INDENT, "Users");
-    const char* username = NULL;
-    uid_t uid = 0;
 
+    const char* username = NULL;
     for (int i = 0; i < nusers; i++) {
-        uid = (uid_t)users[i];
+        uid_t uid = (uid_t)users[i];
 
         if (print_uids) {
             if (!getpwuid(uid))
@@ -405,13 +402,11 @@ void _print_status_user_line(const uid_t* users, int nusers, bool print_uids)
 void _print_status_group_line(const uid_t* groups, int ngroups, bool print_gids)
 {
     assert(groups);
-
     printf("%*s: ", STATUS_INDENT, "Groups");
-    const char* groupname = NULL;
-    gid_t gid = 0;
 
+    const char* groupname = NULL;
     for (int i = 0; i < ngroups; i++) {
-        gid = (gid_t)groups[i];
+        gid_t gid = (gid_t)groups[i];
 
         if (print_gids) {
             // Ignore invalid users
@@ -449,16 +444,12 @@ void reload(int argc, char* argv[])
     assert(argc >= 0); // No negative args
     assert(argv); // At least empty
 
-    int c = 0;
-    int r = 0;
-    int option_index = 0;
-
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        option_index = 0;
-        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        int option_index = 0;
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -483,8 +474,7 @@ void reload(int argc, char* argv[])
     if (optind >= argc)
         die("No class given\n");
 
-    r = _reload_class(argv[optind]);
-    if (r < 0)
+    if (_reload_class(argv[optind]) < 0)
         exit(1);
 }
 
@@ -496,10 +486,9 @@ int _reload_class(const char* classname)
 {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus* bus = NULL;
-    int r = 0;
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto cleanup;
@@ -534,16 +523,13 @@ void daemon_reload(int argc, char* argv[])
 {
     assert(argc >= 0); // No negative args
     assert(argv); // At least empty
-    int c = 0;
-    int r = 0;
-    int option_index = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        option_index = 0;
-        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        int option_index = 0;
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -566,8 +552,7 @@ void daemon_reload(int argc, char* argv[])
         exit(0);
     }
 
-    r = _reload_class(NULL);
-    if (r < 0)
+    if (_reload_class(NULL) < 0)
         exit(1);
 }
 
@@ -586,19 +571,13 @@ void set_property(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname = NULL;
-    char* resource_control = NULL;
-    char* key = NULL;
-    char* value = NULL;
-    int c, r, leftover_argc, option_index;
-    c = r = leftover_argc = option_index = 0;
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        option_index = 0;
-        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        int option_index = 0;
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -621,25 +600,27 @@ void set_property(int argc, char* argv[])
         exit(0);
     }
 
-    leftover_argc = argc - optind;
+    int leftover_argc = argc - optind;
     if (leftover_argc < 1)
         die("No class given\n");
     else if (leftover_argc < 2)
         die("No resource controls given\n");
 
-    classname = argv[optind];
-    resource_control = argv[optind + 1];
+    const char* classname = argv[optind];
+    char* resource_control = argv[optind + 1];
 
     // Soft error checking just to be nice
 
     if (strchr(resource_control, '=') == NULL)
         die("Resource control given does not contain an '='\n");
 
+    char* key = NULL;
+    char* value = NULL;
     if (parse_key_value(resource_control, &key, &value) < 0)
         die("Failed to parse key=value pair\n");
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto cleanup;
@@ -674,19 +655,13 @@ void cat(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname = NULL;
-    const char* filepath = NULL;
-    int c, r, fd, option_index;
-    c = r = fd = option_index = 0;
-    size_t bufsize = 8096;
-    char buf[bufsize];
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        option_index = 0;
-        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        int option_index = 0;
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -713,14 +688,15 @@ void cat(int argc, char* argv[])
         die("No class given\n");
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto cleanup;
     }
 
+    const char* filepath;
     for (int i = optind; i < argc; i++) {
-        classname = argv[i];
+        const char* classname = argv[i];
         r = sd_bus_call_method(bus, service_name, service_path, service_name,
             "GetClass", &error, &msg, "s", classname);
         if (r < 0) {
@@ -736,12 +712,14 @@ void cat(int argc, char* argv[])
             continue;
         }
 
-        fd = open(filepath, O_RDONLY);
+        int fd = open(filepath, O_RDONLY);
         if (fd < 0) {
             perror("Failed to open class file");
             continue;
         }
 
+        size_t bufsize = 8096;
+        char buf[bufsize];
         for (;;) {
             r = read(fd, &buf, bufsize);
             if (r < 0) {
@@ -776,21 +754,13 @@ void edit(int argc, char* argv[])
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const char* classname = NULL;
-    char* filepath = NULL;
-    char* editor = NULL;
-    int c, r, status, modtime, option_index;
-    c = r = status = modtime = option_index = 0;
-    struct stat classstat = { 0 };
-    pid_t pid = 0;
-    char* editor_argv[3] = { NULL };
 
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 'h' },
             { 0 } };
 
-        option_index = 0;
-        c = getopt_long(argc, argv, "h", long_options, &option_index);
+        int option_index = 0;
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -815,10 +785,10 @@ void edit(int argc, char* argv[])
 
     if (optind >= argc)
         die("No class given\n");
-    classname = argv[optind];
+    const char* classname = argv[optind];
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
         goto cleanup;
@@ -831,6 +801,7 @@ void edit(int argc, char* argv[])
         goto cleanup;
     }
 
+    char* filepath = NULL;
     r = sd_bus_message_read(msg, "s", &filepath);
     if (r < 0) {
         fprintf(stderr, "Internal error: Failed to parse class from userctl %s\n",
@@ -842,7 +813,7 @@ void edit(int argc, char* argv[])
         goto cleanup;
     }
 
-    editor = secure_getenv("VISUAL");
+    char* editor = secure_getenv("VISUAL");
     if (editor)
         goto exec;
     editor = secure_getenv("EDITOR");
@@ -853,29 +824,29 @@ void edit(int argc, char* argv[])
         goto exec; // Backwards, but correct
     die("Could not edit the given class. Set EDITOR or VISUAL.");
 
+    struct stat classstat = { 0 };
 exec:
     if (stat(filepath, &classstat) < 0) {
         fprintf(stderr, "Cannot stat %s.\n", filepath);
         goto cleanup;
     }
-    modtime = classstat.st_mtime;
+    int modtime = classstat.st_mtime;
 
-    pid = fork();
+    pid_t pid = fork();
     if (pid == -1) {
         perror("Failed to fork and edit class");
         r = -1;
         goto cleanup;
     }
     if (pid == 0) {
-        editor_argv[0] = editor;
-        editor_argv[1] = filepath;
-        editor_argv[2] = NULL;
+        char* editor_argv[3] = { editor, filepath, NULL };
         if (execv(editor, editor_argv) == -1) {
             perror("Failed to exec and edit class");
             goto cleanup;
         }
     }
 
+    int status = 0;
     waitpid(pid, &status, 0);
     if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
         fprintf(stderr, "%s %s exited with non-zero status code: %d\n", editor,

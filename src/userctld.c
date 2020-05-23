@@ -34,10 +34,6 @@ static const char* service_name = "org.dylangardner.userctl";
 
 int main(int argc, char* argv[])
 {
-    pthread_t tid = 0;
-    sd_bus* bus = NULL;
-    int r = 0;
-
     Context* context = malloc(sizeof *context);
     if (!context)
         errno_die("Failed to initialize userctld");
@@ -48,13 +44,15 @@ int main(int argc, char* argv[])
     // TODO: When reload() method functionality is implemented, we'll want to
     // lock things on write.
 
-    r = pthread_create(&tid, NULL, class_enforcer, context);
+    pthread_t tid = 0;
+    int r = pthread_create(&tid, NULL, class_enforcer, context);
     if (r != 0) {
         fprintf(stderr, "Failed to spawn off class enforcer: %s\n", strerror(r));
         goto cleanup;
     }
     pthread_detach(tid);
 
+    sd_bus* bus = NULL;
     r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-r));
@@ -109,10 +107,9 @@ class_enforcer(void* vargp)
 
     sd_bus* bus = NULL;
     sd_event* event = NULL;
-    int r = 0;
     Context* context = vargp;
 
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus: %s", strerror(-r));
         return NULL;

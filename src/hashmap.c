@@ -10,10 +10,9 @@
 int create_hashmap(HashMap* map, size_t max_size)
 {
     assert(map);
-    int r = 0;
 
     memset(&map->data, 0, sizeof map->data);
-    r = hcreate_r(max_size, &map->data);
+    int r = hcreate_r(max_size, &map->data);
     if (!r)
         return -1;
 
@@ -27,8 +26,8 @@ int create_hashmap(HashMap* map, size_t max_size)
 void destroy_hashmap(HashMap* map)
 {
     assert(map);
-    char** key = NULL;
 
+    char** key;
     while ((key = iter_vector(&map->keys))) {
         // Safe to modify things because hashmap owns things
         free((char*)get_hashmap_entry(map, *key));
@@ -43,13 +42,11 @@ void destroy_hashmap(HashMap* map)
 int add_hashmap_entry(HashMap* map, char* key, char* value)
 {
     assert(map);
-    int r = 0;
-    char* tmp = NULL;
     ENTRY* entry_ptr = NULL;
     ENTRY entry = { key, NULL };
 
     // hsearch never replaces entries so we must check if the key is in there
-    r = hsearch_r(entry, FIND, &entry_ptr, &map->data);
+    int r = hsearch_r(entry, FIND, &entry_ptr, &map->data);
     if (!r && errno == ESRCH) {
         // Not found; insert
         entry.key = strdup(key);
@@ -64,7 +61,7 @@ int add_hashmap_entry(HashMap* map, char* key, char* value)
         append_vector_item(&map->keys, &entry.key);
     } else {
         // found; replace
-        tmp = strdup(value);
+        char* tmp = strdup(value);
         if (!entry_ptr->data)
             return -1;
 
@@ -97,9 +94,8 @@ get_hashmap_count(HashMap* map)
 void iter_hashmap(HashMap* map, const char** key, const char** value)
 {
     assert(map);
-    char** map_key = NULL;
 
-    map_key = iter_vector(&map->keys);
+    char** map_key = iter_vector(&map->keys);
     if (!map_key) {
         *key = NULL;
         *value = NULL;

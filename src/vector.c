@@ -73,11 +73,11 @@ get_vector_count(Vector* vec)
 void* find_vector_item(Vector* vec, finder_t finder, ...)
 {
     assert(vec);
-    void *item = NULL, *tmp_item = NULL;
     va_list args;
-
     va_start(args, finder);
 
+    void* item = NULL;
+    void* tmp_item = NULL;
     while ((tmp_item = iter_vector(vec))) {
         if (finder(tmp_item, args)) {
             item = tmp_item;

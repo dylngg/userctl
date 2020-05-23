@@ -141,10 +141,8 @@ cleanup:
 static int
 complete_classname(char* classname, const char* ext, char** completed)
 {
-    size_t new_size = 0;
-
     if (!has_ext(classname, ext)) {
-        new_size = strlen(classname) + strlen(ext) + 1;
+        size_t new_size = strlen(classname) + strlen(ext) + 1;
         *completed = malloc(sizeof **completed * new_size);
         if (!*completed)
             return -1;
@@ -161,18 +159,12 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    char* given_classname = NULL;
-    char* classname = NULL;
-    int r = 0;
-    bool is_alloc_classname = false;
-    size_t users_size = 0;
-    size_t groups_size = 0;
-    void *void_users, *void_groups;
 
-    r = sd_bus_message_new_method_return(m, &reply);
+    int r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
         return r;
 
+    char* given_classname = NULL;
     r = sd_bus_message_read(m, "s", &given_classname);
     if (r < 0)
         goto cleanup;
@@ -180,12 +172,13 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     pthread_rwlock_rdlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
+    char* classname = NULL;
     r = complete_classname(given_classname, context->classext, &classname);
     if (r < 0) {
         r = -errno;
         goto unlock_cleanup;
     }
-    is_alloc_classname = (r == 1);
+    bool is_alloc_classname = (r == 1);
 
     const char* classpath = get_filepath(context->classdir, classname);
     if (!classpath) {
@@ -206,10 +199,15 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     if (r < 0)
         goto unlock_cleanup_classpath;
 
+    size_t users_size = 0;
+    void* void_users;
     r = convert_vector_to_array(&props->users, &void_users, &users_size);
     if (r < 0)
         goto unlock_cleanup_classpath;
     uid_t* users = (uid_t*)void_users;
+
+    size_t groups_size = 0;
+    void* void_groups;
     r = convert_vector_to_array(&props->groups, &void_groups, &groups_size);
     if (r < 0)
         goto unlock_cleanup_users;
@@ -218,9 +216,11 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     r = sd_bus_message_append_array(reply, 'u', users, users_size);
     if (r < 0)
         goto unlock_cleanup_groups;
+
     r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
     if (r < 0)
         goto unlock_cleanup_groups;
+
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup_groups:
@@ -249,15 +249,12 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    char* given_classname = NULL;
-    char* classname = NULL;
-    bool is_alloc_classname = false;
-    int r = 0;
 
-    r = sd_bus_message_new_method_return(m, &reply);
+    int r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
         return r;
 
+    char* given_classname = NULL;
     r = sd_bus_message_read(m, "s", &given_classname);
     if (r < 0)
         goto cleanup;
@@ -265,12 +262,13 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     pthread_rwlock_wrlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
+    char* classname = NULL;
     r = complete_classname(given_classname, context->classext, &classname);
     if (r < 0) {
         r = -errno;
         goto unlock_cleanup;
     }
-    is_alloc_classname = (r == 1);
+    bool is_alloc_classname = (r == 1);
 
     const char* classpath = get_filepath(context->classdir, classname);
     if (!classpath) {
@@ -338,9 +336,8 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
 {
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    int r = 0;
 
-    r = sd_bus_message_new_method_return(m, &reply);
+    int r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
         return r;
 
@@ -372,20 +369,19 @@ unlock_cleanup:
 int method_evaluate(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
-    ClassProperties props = { 0 };
-    uid_t uid = 0;
-    int r = 0;
     sd_bus_message* reply = NULL;
 
-    r = sd_bus_message_new_method_return(m, &reply);
+    int r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
         return r;
 
+    uid_t uid = 0;
     r = sd_bus_message_read(m, "u", &uid);
     if (r < 0)
         goto cleanup;
 
     pthread_rwlock_rdlock(&context_lock);
+    ClassProperties props = { 0 };
     r = evaluate(uid, &context->props_list, &props);
     if (r < 0)
         goto unlock_cleanup;
@@ -413,17 +409,15 @@ cleanup:
 int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
-    ClassProperties* props;
-    char *given_classname, *classname, *key, *value;
-    given_classname = classname = key = value = NULL;
-    bool is_alloc_classname = false;
-    int r = 0;
     sd_bus_message* reply = NULL;
 
-    r = sd_bus_message_new_method_return(m, &reply);
+    int r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
         return r;
 
+    char* given_classname = NULL;
+    char* key = NULL;
+    char* value = NULL;
     r = sd_bus_message_read(m, "sss", &given_classname, &key, &value);
     if (r < 0)
         goto cleanup;
@@ -431,12 +425,13 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     pthread_rwlock_wrlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
+    char* classname;
     r = complete_classname(given_classname, context->classext, &classname);
     if (r < 0) {
         r = -errno;
         goto unlock_cleanup;
     }
-    is_alloc_classname = (r == 1);
+    bool is_alloc_classname = (r == 1);
 
     const char* classpath = get_filepath(context->classdir, classname);
     if (!classpath) {
@@ -444,7 +439,7 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         goto unlock_cleanup_classname;
     }
 
-    props = find_vector_item(&context->props_list, _classname_finder, classpath);
+    ClassProperties* props = find_vector_item(&context->props_list, _classname_finder, classpath);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
             "No such class found (may need to daemon-reload).");
@@ -485,12 +480,9 @@ _active_uids_and_class(Vector* uids, Vector* classes, Vector* props_list)
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    uid_t uid = 0;
-    int r = 0;
-    ClassProperties props = { 0 };
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "Failed to connect to system bus to get active uids: %s\n",
             strerror(-r));
@@ -512,6 +504,8 @@ _active_uids_and_class(Vector* uids, Vector* classes, Vector* props_list)
         goto cleanup;
     }
 
+    uid_t uid = 0;
+    ClassProperties props = { 0 };
     while ((r = sd_bus_message_read(msg, "(uso)", &uid, NULL, NULL)) > 0) {
         if (evaluate(uid, props_list, &props) < 1)
             continue;
@@ -538,15 +532,14 @@ cleanup:
 int match_user_new(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
-    ClassProperties props = { 0 };
-    int r = 0;
-    uid_t uid = 0;
 
-    r = sd_bus_message_read(m, "uo", &uid, NULL);
+    uid_t uid = 0;
+    int r = sd_bus_message_read(m, "uo", &uid, NULL);
     if (r < 0)
         return r;
 
     pthread_rwlock_rdlock(&context_lock);
+    ClassProperties props = { 0 };
     r = evaluate(uid, &context->props_list, &props);
     if (r < 0)
         goto cleanup;
@@ -574,21 +567,19 @@ cleanup:
 static int
 _enforce_controls_on_class(const char* filepath, Vector* props_list)
 {
-    Vector active_uids, corresponding_classes;
     ClassProperties* evaluated_props = NULL;
-    uid_t uid = 0;
-    size_t nuids = 0;
-    int r = 0;
 
+    Vector active_uids = { 0 };
+    Vector corresponding_classes = { 0 };
     create_vector(&active_uids, sizeof(uid_t));
     create_vector(&corresponding_classes, sizeof(ClassProperties));
-    r = _active_uids_and_class(&active_uids, &corresponding_classes, props_list);
+    int r = _active_uids_and_class(&active_uids, &corresponding_classes, props_list);
     if (r < 0)
         return -1;
 
-    nuids = get_vector_count(&active_uids);
+    size_t nuids = get_vector_count(&active_uids);
     for (size_t n = 0; n < nuids; n++) {
-        uid = *((uid_t*)get_vector_item(&active_uids, n));
+        uid_t uid = *((uid_t*)get_vector_item(&active_uids, n));
         evaluated_props = get_vector_item(&corresponding_classes, n);
         if (filepath && strcmp(filepath, evaluated_props->filepath) != 0)
             continue;
@@ -607,25 +598,17 @@ _enforce_controls_on_class(const char* filepath, Vector* props_list)
 static int
 _enforce_controls(uid_t uid, HashMap* controls)
 {
-    int r, status, arglen;
-    r = status = arglen = 0;
-    pid_t pid = 0;
-    char* arg = NULL;
-    char** argv = NULL;
-    const char* key = NULL;
-    const char* value = NULL;
-    size_t ncontrols, argc_prefix, argc, n;
-    ncontrols = argc_prefix = argc = n = 0;
+    int r = 0;
 
     printf("Enforcing resource controls on %d\n", uid);
 
-    ncontrols = get_hashmap_count(controls);
+    size_t ncontrols = get_hashmap_count(controls);
     if (ncontrols < 1)
         return 0;
 
-    argc_prefix = 3; // systemctl + set-property + unit_name
-    argc = argc_prefix + ncontrols; // + controls ...
-    argv = malloc(sizeof *argv * (argc + 1)); // + NULL
+    size_t argc_prefix = 3; // systemctl + set-property + unit_name
+    size_t argc = argc_prefix + ncontrols; // + controls ...
+    char** argv = malloc(sizeof *argv * (argc + 1)); // + NULL
     if (!argv)
         return -1;
 
@@ -635,10 +618,13 @@ _enforce_controls(uid_t uid, HashMap* controls)
     snprintf(unit_name, 24, "user-%u.slice", uid);
     argv[2] = unit_name;
 
-    for (n = 0; n < ncontrols; n++) {
+    const char* key = NULL;
+    const char* value = NULL;
+    size_t n = 0;
+    for (; n < ncontrols; n++) {
         iter_hashmap(controls, &key, &value);
-        arglen = strlen(key) + strlen(value) + 2;
-        arg = malloc(sizeof *arg * arglen);
+        int arglen = strlen(key) + strlen(value) + 2;
+        char* arg = malloc(sizeof *arg * arglen);
         if (!arg) {
             r = -1;
             iter_hashmap_end(controls);
@@ -651,7 +637,7 @@ _enforce_controls(uid_t uid, HashMap* controls)
     iter_hashmap_end(controls);
     argv[argc] = NULL;
 
-    pid = fork();
+    pid_t pid = fork();
     if (pid == -1) {
         perror("Failed to fork and set property");
         r = -1;
@@ -662,6 +648,7 @@ _enforce_controls(uid_t uid, HashMap* controls)
             errno_die("Failed to exec and set property");
     }
 
+    int status = 0;
     waitpid(pid, &status, 0);
     if (WIFEXITED(status)) {
         if (WEXITSTATUS(status) == 0)

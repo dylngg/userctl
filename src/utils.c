@@ -43,8 +43,7 @@ int to_uid(const char* username, uid_t* uid)
 int to_username(uid_t uid, const char** username)
 {
     errno = 0;
-    struct passwd* pw = NULL;
-    pw = getpwuid(uid);
+    struct passwd* pw = getpwuid(uid);
     if (!pw)
         return -1;
     *username = pw->pw_name;
@@ -68,8 +67,7 @@ int to_gid(const char* groupname, gid_t* gid)
 int to_groupname(gid_t gid, const char** groupname)
 {
     errno = 0;
-    struct group* grp = NULL;
-    grp = getgrgid(gid);
+    struct group* grp = getgrgid(gid);
     if (!grp)
         return -1;
     *groupname = grp->gr_name;
@@ -84,6 +82,7 @@ bool _alldigits(const char* string)
 {
     if (!string)
         return false;
+
     const char* start = string;
     while (*string)
         if (isdigit(*string++) == 0)
@@ -94,18 +93,15 @@ bool _alldigits(const char* string)
 int get_groups(uid_t uid, gid_t** gids, int* ngids)
 {
     errno = 0;
-    gid_t* groups = NULL;
-    int ngroups = 0;
-
     struct passwd* pw = getpwuid(uid);
     if (!pw)
         return -1;
 
-    ngroups = (int)sysconf(_SC_NGROUPS_MAX);
+    int ngroups = (int)sysconf(_SC_NGROUPS_MAX);
     if (ngroups <= 0)
         ngroups = 65536; // Good enough
 
-    groups = malloc(sizeof *groups * ngroups);
+    gid_t* groups = malloc(sizeof *groups * ngroups);
     if (!groups)
         return -1;
 
