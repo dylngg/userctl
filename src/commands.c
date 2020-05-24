@@ -35,6 +35,7 @@ typedef struct Class {
     size_t gids_size;
 } Class;
 
+void _parse_no_args(int argc, char *argv[]);
 void _print_class(const char* filepath);
 void _print_class_status(Class* class, bool print_uids, bool print_gids);
 void _print_status_user_line(const uid_t* users, int nusers, bool print_uids);
@@ -73,23 +74,17 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[])
     exit(1);
 }
 
-void list(int argc, char* argv[])
+void _parse_no_args(int argc, char *argv[])
 {
-    assert(argc >= 0); // No negative args
-    assert(argv); // At least empty
-
-    sd_bus_error error = SD_BUS_ERROR_NULL;
-    sd_bus_message* msg = NULL;
-    sd_bus* bus = NULL;
-
     while (true) {
         static struct option long_options[] = { { "help", no_argument, &help, 1 },
-            { 0 } };
+                                                { 0 } };
 
         int option_index = 0;
         int c = getopt_long(argc, argv, "h", long_options, &option_index);
         if (c == -1)
             break;
+
         switch (c) {
         case 'h':
             help = 1;
@@ -101,6 +96,19 @@ void list(int argc, char* argv[])
             continue;
         }
     }
+}
+
+void list(int argc, char* argv[])
+{
+    assert(argc >= 0); // No negative args
+    assert(argv); // At least empty
+
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* msg = NULL;
+    sd_bus* bus = NULL;
+
+    _parse_no_args(argc, argv);
+
     // Abort, missing/wrong args (getopt will print errors out)
     if (stop)
         exit(1);
@@ -169,26 +177,8 @@ void eval(int argc, char* argv[])
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
 
-    while (true) {
-        static struct option long_options[] = { { "help", no_argument, &help, 1 },
-            { 0 } };
+    _parse_no_args(argc, argv);
 
-        int option_index = 0;
-        int c = getopt_long(argc, argv, "h", long_options, &option_index);
-        if (c == -1)
-            break;
-        switch (c) {
-        case 'h':
-            help = 1;
-            break;
-        case '?':
-            stop = 1;
-            break;
-        default:
-            // Ignore weird things
-            continue;
-        }
-    }
     // Abort, missing/wrong args (getopt will print errors out)
     if (stop)
         exit(1);
@@ -440,25 +430,8 @@ void reload(int argc, char* argv[])
     assert(argc >= 0); // No negative args
     assert(argv); // At least empty
 
-    while (true) {
-        static struct option long_options[] = { { "help", no_argument, &help, 'h' },
-            { 0 } };
+    _parse_no_args(argc, argv);
 
-        int option_index = 0;
-        int c = getopt_long(argc, argv, "h", long_options, &option_index);
-        if (c == -1)
-            break;
-        switch (c) {
-        case 'h':
-            help = 1;
-            break;
-        case '?':
-            stop = 1;
-            break;
-        default:
-            continue;
-        }
-    }
     // Abort, missing/wrong args (getopt will print errors out)
     if (stop)
         exit(1);
@@ -520,25 +493,8 @@ void daemon_reload(int argc, char* argv[])
     assert(argc >= 0); // No negative args
     assert(argv); // At least empty
 
-    while (true) {
-        static struct option long_options[] = { { "help", no_argument, &help, 'h' },
-            { 0 } };
+    _parse_no_args(argc, argv);
 
-        int option_index = 0;
-        int c = getopt_long(argc, argv, "h", long_options, &option_index);
-        if (c == -1)
-            break;
-        switch (c) {
-        case 'h':
-            help = 1;
-            break;
-        case '?':
-            stop = 1;
-            break;
-        default:
-            continue;
-        }
-    }
     // Abort, missing/wrong args (getopt will print errors out)
     if (stop)
         exit(1);
@@ -568,31 +524,14 @@ void set_property(int argc, char* argv[])
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
 
-    while (true) {
-        static struct option long_options[] = { { "help", no_argument, &help, 'h' },
-            { 0 } };
+    _parse_no_args(argc, argv);
 
-        int option_index = 0;
-        int c = getopt_long(argc, argv, "h", long_options, &option_index);
-        if (c == -1)
-            break;
-        switch (c) {
-        case 'h':
-            help = 1;
-            break;
-        case '?':
-            stop = 1;
-            break;
-        default:
-            continue;
-        }
-    }
     // Abort, missing/wrong args (getopt will print errors out)
     if (stop)
         exit(1);
 
     if (help) {
-        show_status_help();
+        show_set_property_help();
         exit(0);
     }
 
@@ -652,25 +591,8 @@ void cat(int argc, char* argv[])
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
 
-    while (true) {
-        static struct option long_options[] = { { "help", no_argument, &help, 'h' },
-            { 0 } };
+    _parse_no_args(argc, argv);
 
-        int option_index = 0;
-        int c = getopt_long(argc, argv, "h", long_options, &option_index);
-        if (c == -1)
-            break;
-        switch (c) {
-        case 'h':
-            help = 1;
-            break;
-        case '?':
-            stop = 1;
-            break;
-        default:
-            continue;
-        }
-    }
     // Abort, missing/wrong args (getopt will print errors out)
     if (stop)
         exit(1);
@@ -751,25 +673,8 @@ void edit(int argc, char* argv[])
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
 
-    while (true) {
-        static struct option long_options[] = { { "help", no_argument, &help, 'h' },
-            { 0 } };
+    _parse_no_args(argc, argv);
 
-        int option_index = 0;
-        int c = getopt_long(argc, argv, "h", long_options, &option_index);
-        if (c == -1)
-            break;
-        switch (c) {
-        case 'h':
-            help = 1;
-            break;
-        case '?':
-            stop = 1;
-            break;
-        default:
-            continue;
-        }
-    }
     // Abort, missing/wrong args (getopt will print errors out)
     if (stop)
         exit(1);
