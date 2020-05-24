@@ -11,8 +11,8 @@
 #include "hashmap.h"
 #include "vector.h"
 
-#define MAX_CONTROLS 512
-#define MAX_CLASSES 64
+#define MAX_CONTROLS 128
+#define MAX_CLASSES 256
 
 /* The properties of a class */
 typedef struct

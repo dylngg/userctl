@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <syslog.h>
 #include <unistd.h>
 
 #include "classparser.h"
@@ -114,10 +115,10 @@ int parse_classfile(const char* filepath, ClassProperties* props)
                 return 0;
         } else if (ferror(classfile)) {
             // There is an error with the stream
-            perror(filepath);
+            syslog(LOG_ERR, "Failed to read class file %s: %s", filepath, strerror(errno));
         }
     } else {
-        perror(filepath);
+        syslog(LOG_ERR, "Failed to read class file %s: %s", filepath, strerror(errno));
     }
     return -1;
 }
@@ -206,7 +207,7 @@ void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid)
 void _print_line_error(unsigned long long linenum, const char* restrict filepath,
     const char* restrict desc)
 {
-    fprintf(stderr, "%llu:%s %s\n", linenum, filepath, desc);
+    syslog(LOG_ERR, "Syntax error in %s:%llu %s", filepath, linenum, desc);
 }
 
 static const char* curr_ext = "";
@@ -219,6 +220,7 @@ int list_class_files(const char* dir, const char* ext, struct dirent*** class_fi
     curr_ext = ext;
     int filecount = scandir(dir, class_files, _is_classfile, alphasort);
     if (filecount == -1) {
+        syslog(LOG_ERR, "Failed to read dir %s: %s", dir, strerror(errno));
         *num_files = 0;
         class_files = NULL;
         return -1;
@@ -249,7 +251,7 @@ int evaluate(uid_t uid, HashMap* classes, ClassProperties* props)
     double highest_priority = -INFINITY;
 
     if (get_groups(uid, &groups, &ngroups) < 0) {
-        puts("Failed to get group list");
+        syslog(LOG_ERR, "Failed to get group list for %d", uid);
         return -1;
     }
 

@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <syslog.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
 
@@ -75,15 +76,18 @@ _load_class_properties(char* dir, char* ext, HashMap* classes)
 
     for (int i = 0; i < num_files; i++) {
         if (i >= MAX_CLASSES) {
-            fprintf(stderr, "Skipping %s because the max class count has "
-                            "hit (%d)",
+            syslog(LOG_WARNING, "Skipping class %s because the max class "
+                                "count has been hit (%d)",
                 class_files[i]->d_name, MAX_CLASSES);
             free(class_files[i]);
-            break;
+            continue;
         }
 
         ClassProperties props;
-        if (create_class(dir, class_files[i]->d_name, &props) >= 0) {
+        if (create_class(dir, class_files[i]->d_name, &props) < 0) {
+            syslog(LOG_DEBUG, "Failed to create class from %s: %s",
+                class_files[i]->d_name, strerror(errno));
+        } else {
             char* classname = basename(class_files[i]->d_name);
             add_hashmap_entry(classes, classname, &props);
         }
@@ -264,6 +268,8 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     // Now try and modify that class
     r = create_class(context->classdir, classname, props);
     if (r < 0) {
+        syslog(LOG_ERR, "Failed to reload class %s: %s", classname,
+            strerror(errno));
         r = -errno;
         memcpy(props, &backup, sizeof backup);
         sd_bus_error_set_const(ret_error, "org.dylangardner.ClassFailure",
@@ -303,6 +309,7 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
     memcpy(&backup, context, sizeof backup);
 
     if ((init_context(context)) < 0) {
+        syslog(LOG_ERR, "Failed to reload daemon: %s", strerror(errno));
         r = -errno;
         memcpy(context, &backup, sizeof backup);
         sd_bus_error_set_const(ret_error, "org.dylangardner.DaemonFailure",
@@ -399,7 +406,8 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
     add_hashmap_entry(&props->controls, key, value);
 
-    printf("Enforcing resource controls on all users in %s\n", classname);
+    syslog(LOG_NOTICE, "Enforcing resource controls on all users in %s",
+        classname);
     _enforce_controls_on_class(props->filepath, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
 
@@ -431,7 +439,8 @@ _active_uids_and_class(Vector* uids, Vector* classes, HashMap* all_classes)
     /* Connect to the system bus */
     int r = sd_bus_open_system(&bus);
     if (r < 0) {
-        fprintf(stderr, "Failed to connect to system bus to get active uids: %s\n",
+        syslog(LOG_ERR, "Failed to connect to system bus to get active uids: "
+                        "%s",
             strerror(-r));
         goto cleanup;
     }
@@ -440,34 +449,35 @@ _active_uids_and_class(Vector* uids, Vector* classes, HashMap* all_classes)
         bus, "org.freedesktop.login1", "/org/freedesktop/login1",
         "org.freedesktop.login1.Manager", "ListUsers", &error, &msg, NULL);
     if (r < 0) {
-        fprintf(stderr, "Failed to get active uids: %s\n", error.message);
-
+        syslog(LOG_ERR, "Failed to get active uids from logind: %s", error.message);
         goto cleanup;
     }
 
     r = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(uso)");
     if (r < 0) {
-        fprintf(stderr, "Failed to get active uids: %s\n", strerror(-r));
+        syslog(LOG_DEBUG, "Failed to parse active uids: %s", strerror(-r));
         goto cleanup;
     }
 
     uid_t uid = 0;
     ClassProperties props = { 0 };
     while ((r = sd_bus_message_read(msg, "(uso)", &uid, NULL, NULL)) > 0) {
-        if (evaluate(uid, all_classes, &props) < 1)
+        if (evaluate(uid, all_classes, &props) < 1) {
+            syslog(LOG_DEBUG, "Could not evaluate %d: %s", uid, strerror(-r));
             continue;
+        }
 
         append_vector_item(uids, &uid);
         append_vector_item(classes, &props);
     }
     if (r < 0) {
-        fprintf(stderr, "Failed to parse active uids: %s\n", strerror(-r));
+        syslog(LOG_DEBUG, "Failed to parse active uids: %s", strerror(-r));
         goto cleanup;
     }
 
     r = sd_bus_message_exit_container(msg);
     if (r < 0) {
-        fprintf(stderr, "Failed to parse active uids: %s\n", strerror(-r));
+        syslog(LOG_DEBUG, "Failed to parse active uids: %s", strerror(-r));
         goto cleanup;
     }
 
@@ -494,7 +504,7 @@ int match_user_new(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 
     // User has no class; ignore
     if (r == 0) {
-        printf("%d belongs to no class. Ignoring.\n", uid);
+        syslog(LOG_INFO, "%d belongs to no class. Ignoring.", uid);
         r = 0;
         goto cleanup;
     }
@@ -548,8 +558,7 @@ static int
 _enforce_controls(uid_t uid, HashMap* controls)
 {
     int r = 0;
-
-    printf("Enforcing resource controls on %d\n", uid);
+    syslog(LOG_NOTICE, "Enforcing resource controls on %d", uid);
 
     size_t ncontrols = get_hashmap_count(controls);
     if (ncontrols < 1)
@@ -588,13 +597,16 @@ _enforce_controls(uid_t uid, HashMap* controls)
 
     pid_t pid = fork();
     if (pid == -1) {
-        perror("Failed to fork and set property");
+        syslog(LOG_ERR, "Failed to fork and set property");
         r = -1;
         goto exec_cleanup;
     }
     if (pid == 0) {
-        if (execv("/bin/systemctl", argv) == -1)
-            errno_die("Failed to exec and set property");
+        // FIXME: Print out the entire command
+        const char* systemctl = "/bin/systemctl";
+        syslog(LOG_DEBUG, "Exec: %s %s %s %s %s ...", systemctl, argv[0], argv[1], argv[2], argv[3]);
+        if (execv(systemctl, argv) == -1)
+            syslog(LOG_ERR, "Failed to exec and set property");
     }
 
     int status = 0;
@@ -603,17 +615,13 @@ _enforce_controls(uid_t uid, HashMap* controls)
         if (WEXITSTATUS(status) == 0)
             goto exec_cleanup;
 
-        for (int i = 0; argv[i]; i++)
-            fprintf(stderr, "%s ", argv[i]);
-        fprintf(stderr, "exited with non-zero status code: %d",
+        syslog(LOG_ERR, "systemctl exited with non-zero status code: %d",
             WEXITSTATUS(status));
     } else if (WIFSIGNALED(status)) {
         if (WTERMSIG(status) == 0)
             goto exec_cleanup;
 
-        for (int i = 0; argv[i]; i++)
-            fprintf(stderr, "%s ", argv[i]);
-        fprintf(stderr, "recieved a signal: %s", strsignal(WTERMSIG(status)));
+        syslog(LOG_ERR, "systemctl recieved a signal: %s", strsignal(WTERMSIG(status)));
     }
 
 exec_cleanup:
