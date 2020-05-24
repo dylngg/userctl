@@ -5,21 +5,20 @@
 
 void show_help();
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     static const Command cmds[] = {
-//        {"add-group", add_group}
-//        {"add-user", add_user},
-        {"edit", edit},
-        {"cat", cat},
-        {"eval", eval},
-        {"-h", show_help},
-        {"--help", show_help},
-        {"list", list},
-        {"set-property", set_property},
-        {"status", status},
-        {"reload", reload},
-        {"daemon-reload", daemon_reload},
-        {0}
+        { "edit", edit },
+        { "cat", cat },
+        { "eval", eval },
+        { "-h", show_help },
+        { "--help", show_help },
+        { "list", list },
+        { "set-property", set_property },
+        { "status", status },
+        { "reload", reload },
+        { "daemon-reload", daemon_reload },
+        { 0 }
     };
     dispatch_cmd(argc, argv, cmds);
 }

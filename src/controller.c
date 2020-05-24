@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-#define _GNU_SOURCE
+#define _GNU_SOURCE // (basename)
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -9,109 +9,130 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <systemd/sd-bus.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <syslog.h>
+#include <systemd/sd-bus.h>
 #include <unistd.h>
 
 #include "classparser.h"
 #include "controller.h"
+#include "hashmap.h"
 #include "utils.h"
 #include "vector.h"
-#include "hashmap.h"
 
-static int _load_props_list(char* dir, char* ext, Vector* props_list);
-static bool _classname_finder(void *void_prop, va_list args);
-static int _enforce_controls(uid_t uid, HashMap *controls);
-static int _enforce_controls_on_class(const char *classpath, Vector *props_list);
-static int _active_uids_and_class(Vector *uids, Vector *classes, Vector *props_list);
+static int _load_class_properties(char* dir, char* ext, HashMap* classes);
+static int _enforce_controls(uid_t uid, HashMap* controls);
+static int _enforce_controls_on_class(const char* classpath, HashMap* classes);
+static int _active_uids_and_class(Vector* uids, Vector* classes, HashMap* all_classes);
 
-int init_context(Context* context) {
+int init_context(Context* context)
+{
     context->classdir = strdup("/etc/userctl");
     context->classext = strdup(".class");
-    if (!context->classdir || !context->classext) return -1;
+    if (!context->classdir || !context->classext)
+        return -1;
     // FIXME: What if no /etc/userctl?
-    return _load_props_list(context->classdir, context->classext,
-                            &context->props_list);
+    return _load_class_properties(context->classdir, context->classext,
+        &context->classes);
 }
 
-void destroy_context(Context* context) {
+void destroy_context(Context* context)
+{
     assert(context);
 
-    ClassProperties *props;
-    while ((props = iter_vector(&context->props_list)))
+    ClassProperties* props = NULL;
+    while ((props = iter_hashmap_values(&context->classes)))
         destroy_class(props);
 
-    destroy_vector(&context->props_list);
+    destroy_hashmap(&context->classes);
     free(context->classdir);
     free(context->classext);
 }
 
 /*
- * Loads and initializes the props_list based on the found class files. Only
+ * Loads and initializes the classes based on the found class files. Only
  * valid class files are returned. If there is a issue with getting the class
  * files, a -1 is returned (and errno should be looked up), otherwise zero is
  * returned.
  */
-static int _load_props_list(char* dir, char* ext, Vector* props_list) {
-    assert(dir && ext && props_list);
+static int
+_load_class_properties(char* dir, char* ext, HashMap* classes)
+{
+    assert(dir && ext && classes);
     struct dirent** class_files = NULL;
     int num_files = 0;
-    if (list_class_files(dir, ext, &class_files, &num_files) < 0) return -1;
+
+    // FIXME: Limit classes in list_class_files, rather than here
+    if (list_class_files(dir, ext, &class_files, &num_files) < 0)
+        return -1;
 
     assert(class_files);
     assert(*class_files); // FIXME: What if no class files!
 
-    create_vector(props_list, sizeof (ClassProperties));
-    ensure_vector_capacity(props_list, num_files);
+    int r = create_hashmap(classes, sizeof(ClassProperties), MAX_CLASSES);
+    if (r < 0)
+        return -1;
 
     for (int i = 0; i < num_files; i++) {
-        ClassProperties props;
-        if (create_class(dir, class_files[i]->d_name, &props) >= 0)
-            append_vector_item(props_list, &props);
+        if (i >= MAX_CLASSES) {
+            syslog(LOG_WARNING, "Skipping class %s because the max class "
+                                "count has been hit (%d)",
+                class_files[i]->d_name, MAX_CLASSES);
+            free(class_files[i]);
+            continue;
+        }
 
+        ClassProperties props;
+        if (create_class(dir, class_files[i]->d_name, &props) < 0) {
+            syslog(LOG_DEBUG, "Failed to create class from %s: %s",
+                class_files[i]->d_name, strerror(errno));
+        } else {
+            char* classname = basename(class_files[i]->d_name);
+            add_hashmap_entry(classes, classname, &props);
+        }
         free(class_files[i]);
     }
     free(class_files);
     return 0;
 }
 
-int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
+{
     Context* context = userdata;
     sd_bus_message* reply = NULL;
 
     int r = sd_bus_message_new_method_return(m, &reply);
-    if (r < 0) return r;
+    if (r < 0)
+        return r;
 
     pthread_rwlock_rdlock(&context_lock);
 
-    size_t nprops = get_vector_count(&context->props_list);
-    char** classnames = malloc(sizeof *classnames * (nprops + 1));  // + NULL
-    if (!classnames) {
+    Vector classnames;
+    r = create_vector(&classnames, sizeof(char*));
+    if (r < 0) {
         pthread_rwlock_unlock(&context_lock);
         r = -ENOMEM;
         goto cleanup;
     }
-    classnames[nprops] = NULL;
+    size_t nclasses = get_hashmap_count(&context->classes);
+    ensure_vector_capacity(&classnames, nclasses);
 
-    for (size_t n = 0; n < nprops; n++) {
-        ClassProperties *props = get_vector_item(&context->props_list, n);
-        classnames[n] = strdup(props->filepath);
-        if (!classnames[n]) {
-            for (size_t m = 0; m < n; m++) free(classnames[m]);
-            goto cleanup_classnames;
-        }
-    }
+    ClassProperties* props;
+    while ((props = iter_hashmap_values(&context->classes)))
+        append_vector_item(&classnames, &props->filepath);
 
-    r = sd_bus_message_append_strv(reply, classnames);
-    if (r < 0) goto cleanup_inner_classnames;
+    iter_hashmap_end(&context->classes);
+
+    char** classnames_strv = pretend_vector_is_array(&classnames);
+    r = sd_bus_message_append_strv(reply, classnames_strv);
+    if (r < 0)
+        goto cleanup_classnames;
+
     r = sd_bus_send(NULL, reply, NULL);
 
-cleanup_inner_classnames:
-    for (size_t m = 0; m < nprops; m++) free(classnames[m]);
-
 cleanup_classnames:
-    free(classnames);
+    destroy_vector(&classnames);
 
 cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -125,13 +146,14 @@ cleanup:
  * classname. If there was an error, -1 is returned. Otherwise, 1 to indicate
  * a new allocation (should be free'd), 0 otherwise.
  */
-static int complete_classname(char *classname, const char *ext, char **completed) {
-    size_t new_size = 0;
-
+static int
+complete_classname(char* classname, const char* ext, char** completed)
+{
     if (!has_ext(classname, ext)) {
-        new_size = strlen(classname) + strlen(ext) + 1;
+        size_t new_size = strlen(classname) + strlen(ext) + 1;
         *completed = malloc(sizeof **completed * new_size);
-        if (!*completed) return -1;
+        if (!*completed)
+            return -1;
 
         strcpy(*completed, classname);
         strcat(*completed, ext);
@@ -141,70 +163,61 @@ static int complete_classname(char *classname, const char *ext, char **completed
     return 0;
 }
 
-int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
+{
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    char *given_classname, *classname;
-    int r;
-    bool is_alloc_classname;
-    size_t users_size, groups_size;
-    void *void_users, *void_groups;
 
-    r = sd_bus_message_new_method_return(m, &reply);
-    if (r < 0) return r;
+    int r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0)
+        return r;
 
+    char* given_classname = NULL;
     r = sd_bus_message_read(m, "s", &given_classname);
-    if (r < 0) goto cleanup;
+    if (r < 0)
+        goto cleanup;
 
     pthread_rwlock_rdlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
+    char* classname = NULL;
     r = complete_classname(given_classname, context->classext, &classname);
     if (r < 0) {
         r = -errno;
         goto unlock_cleanup;
     }
-    is_alloc_classname = (r == 1);
+    bool is_alloc_classname = (r == 1);
 
-    const char *classpath = get_filepath(context->classdir, classname);
-    ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
+    ClassProperties* props = get_hashmap_entry(&context->classes, classname);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
-                               "No such class found (may need to daemon-reload).");
+            "No such class found (may need to daemon-reload).");
         r = -EINVAL;
-        goto unlock_cleanup_classpath;
+        goto unlock_cleanup_classname;
     }
 
-    r = sd_bus_message_append(
-        reply, "sbd",
-        props->filepath,
-        props->shared,
-        props->priority
-    );
-    if (r < 0) goto unlock_cleanup_classpath;
+    r = sd_bus_message_append(reply, "sbd", props->filepath,
+        props->shared, props->priority);
+    if (r < 0)
+        goto unlock_cleanup_classname;
 
-    r = convert_vector_to_array(&props->users, &void_users, &users_size);
-    if (r < 0) goto unlock_cleanup_classpath;
-    uid_t *users = (uid_t *) void_users;
-    r = convert_vector_to_array(&props->groups, &void_groups, &groups_size);
-    if (r < 0) goto unlock_cleanup_users;
-    gid_t *groups = (gid_t *) void_groups;
-
+    uid_t* users = pretend_vector_is_array(&props->users);
+    size_t users_size = get_vector_count(&props->users) * sizeof *users;
     r = sd_bus_message_append_array(reply, 'u', users, users_size);
-    if (r < 0) goto unlock_cleanup_groups;
+    if (r < 0)
+        goto unlock_cleanup_classname;
+
+    gid_t* groups = pretend_vector_is_array(&props->groups);
+    size_t groups_size = get_vector_count(&props->groups) * sizeof *groups;
     r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
-    if (r < 0) goto unlock_cleanup_groups;
+    if (r < 0)
+        goto unlock_cleanup_classname;
+
     r = sd_bus_send(NULL, reply, NULL);
 
-unlock_cleanup_groups:
-    free(groups);
-
-unlock_cleanup_users:
-    free(users);
-
-unlock_cleanup_classpath:
-    free((char *) classpath);
-    if (is_alloc_classname) free(classname);
+unlock_cleanup_classname:
+    if (is_alloc_classname)
+        free(classname);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -215,36 +228,37 @@ cleanup:
     return r;
 }
 
-int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
+{
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    char* given_classname, *classname;
-    bool is_alloc_classname;
-    int r;
 
-    r = sd_bus_message_new_method_return(m, &reply);
-    if (r < 0) return r;
+    int r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0)
+        return r;
 
+    char* given_classname = NULL;
     r = sd_bus_message_read(m, "s", &given_classname);
-    if (r < 0) goto cleanup;
+    if (r < 0)
+        goto cleanup;
 
     pthread_rwlock_wrlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
+    char* classname = NULL;
     r = complete_classname(given_classname, context->classext, &classname);
     if (r < 0) {
         r = -errno;
         goto unlock_cleanup;
     }
-    is_alloc_classname = (r == 1);
+    bool is_alloc_classname = (r == 1);
 
-    const char *classpath = get_filepath(context->classdir, classname);
-    ClassProperties *props = find_vector_item(&context->props_list, _classname_finder, classpath);
+    ClassProperties* props = get_hashmap_entry(&context->classes, classname);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
-                               "No such class found (may need to daemon-reload).");
+            "No such class found (may need to daemon-reload).");
         r = -EINVAL;
-        goto unlock_cleanup_classpath;
+        goto unlock_cleanup_classname;
     }
 
     // Backup onto the stack just in case of failure
@@ -254,21 +268,22 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     // Now try and modify that class
     r = create_class(context->classdir, classname, props);
     if (r < 0) {
+        syslog(LOG_ERR, "Failed to reload class %s: %s", classname,
+            strerror(errno));
         r = -errno;
         memcpy(props, &backup, sizeof backup);
         sd_bus_error_set_const(ret_error, "org.dylangardner.ClassFailure",
-                               "Class could not be loaded.");
-        goto unlock_cleanup_classpath;
+            "Class could not be loaded.");
+        goto unlock_cleanup_classname;
     }
-    else {
-        destroy_class(&backup);
-    }
-    _enforce_controls_on_class(classpath, &context->props_list);
+
+    destroy_class(&backup);
+    _enforce_controls_on_class(props->filepath, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
 
-unlock_cleanup_classpath:
-    free((char *) classpath);
-    if (is_alloc_classname) free(classname);
+unlock_cleanup_classname:
+    if (is_alloc_classname)
+        free(classname);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -279,25 +294,14 @@ cleanup:
     return r;
 }
 
-/*
- * Implements the vector finder interface for finding a classname, given as
- * the second argument, in a vector of ClassProperties.
- */
-inline bool _classname_finder(void *void_prop, va_list args) {
-    assert(void_prop);
-
-    ClassProperties *props = void_prop;
-    const char *classpath = va_arg(args, char *);
-    return strcmp(props->filepath, classpath) == 0;
-}
-
-int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
+{
     Context* context = userdata;
     sd_bus_message* reply = NULL;
-    int r;
 
-    r = sd_bus_message_new_method_return(m, &reply);
-    if (r < 0) return r;
+    int r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0)
+        return r;
 
     pthread_rwlock_wrlock(&context_lock);
 
@@ -305,17 +309,16 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
     memcpy(&backup, context, sizeof backup);
 
     if ((init_context(context)) < 0) {
+        syslog(LOG_ERR, "Failed to reload daemon: %s", strerror(errno));
         r = -errno;
         memcpy(context, &backup, sizeof backup);
         sd_bus_error_set_const(ret_error, "org.dylangardner.DaemonFailure",
-                                          "Daemon could not be loaded.");
+            "Daemon could not be loaded.");
         goto unlock_cleanup;
     }
-    else {
-        destroy_context(&backup);
-    }
 
-    _enforce_controls_on_class(NULL, &context->props_list);
+    destroy_context(&backup);
+    _enforce_controls_on_class(NULL, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup:
@@ -325,31 +328,35 @@ unlock_cleanup:
     return r;
 }
 
-int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
+int method_evaluate(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
+{
     Context* context = userdata;
-    ClassProperties props;
-    uid_t uid;
-    int r;
     sd_bus_message* reply = NULL;
 
-    r = sd_bus_message_new_method_return(m, &reply);
-    if (r < 0) return r;
+    int r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0)
+        return r;
 
+    uid_t uid = 0;
     r = sd_bus_message_read(m, "u", &uid);
-    if (r < 0) goto cleanup;
+    if (r < 0)
+        goto cleanup;
 
     pthread_rwlock_rdlock(&context_lock);
-    r = evaluate(uid, &context->props_list, &props);
-    if (r < 0) goto unlock_cleanup;
+    ClassProperties props = { 0 };
+    r = evaluate(uid, &context->classes, &props);
+    if (r < 0)
+        goto unlock_cleanup;
     if (r == 0) {
         sd_bus_error_setf(ret_error, "org.dylangardner.NoClassForUser",
-                          "No class found for the user.");
+            "No class found for the user.");
         r = -EINVAL;
         goto unlock_cleanup;
     }
 
     r = sd_bus_message_append_basic(reply, 's', props.filepath);
-    if (r < 0) goto unlock_cleanup;
+    if (r < 0)
+        goto unlock_cleanup;
     r = sd_bus_send(NULL, reply, NULL);
 
 unlock_cleanup:
@@ -361,49 +368,51 @@ cleanup:
     return r;
 }
 
-int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
-    Context *context = userdata;
-    ClassProperties *props;
-    char *given_classname, *classname;
-    char *key, *value;
-    bool is_alloc_classname;
-    int r;
+int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
+{
+    Context* context = userdata;
     sd_bus_message* reply = NULL;
 
-    r = sd_bus_message_new_method_return(m, &reply);
-    if (r < 0) return r;
+    int r = sd_bus_message_new_method_return(m, &reply);
+    if (r < 0)
+        return r;
 
+    char* given_classname = NULL;
+    char* key = NULL;
+    char* value = NULL;
     r = sd_bus_message_read(m, "sss", &given_classname, &key, &value);
-    if (r < 0) goto cleanup;
+    if (r < 0)
+        goto cleanup;
 
     pthread_rwlock_wrlock(&context_lock);
 
     // Use classname.class instead of classname if .class extension is not given
+    char* classname;
     r = complete_classname(given_classname, context->classext, &classname);
     if (r < 0) {
         r = -errno;
         goto unlock_cleanup;
     }
-    is_alloc_classname = (r == 1);
+    bool is_alloc_classname = (r == 1);
 
-    const char *classpath = get_filepath(context->classdir, classname);
-    props = find_vector_item(&context->props_list, _classname_finder, classpath);
+    ClassProperties* props = get_hashmap_entry(&context->classes, classname);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
-                               "No such class found (may need to daemon-reload).");
+            "No such class found (may need to daemon-reload).");
         r = -EINVAL;
-        goto unlock_cleanup_classpath;
+        goto unlock_cleanup_classname;
     }
 
     add_hashmap_entry(&props->controls, key, value);
 
-    printf("Enforcing resource controls on all users in %s\n", classname);
-    _enforce_controls_on_class(classpath, &context->props_list);
+    syslog(LOG_NOTICE, "Enforcing resource controls on all users in %s",
+        classname);
+    _enforce_controls_on_class(props->filepath, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
 
-unlock_cleanup_classpath:
-    free((char *) classpath);
-    if (is_alloc_classname) free(classname);
+unlock_cleanup_classname:
+    if (is_alloc_classname)
+        free(classname);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -419,56 +428,55 @@ cleanup:
  * class. If there was an error, -1 is returned (and errno should be looked
  * up). Otherwise, 0 is returned.
  */
-static int _active_uids_and_class(Vector *uids, Vector *classes, Vector *props_list) {
+static int
+_active_uids_and_class(Vector* uids, Vector* classes, HashMap* all_classes)
+{
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message* msg = NULL;
     sd_bus* bus = NULL;
-    const uid_t uid;
-    int r;
-    ClassProperties props;
 
     /* Connect to the system bus */
-    r = sd_bus_open_system(&bus);
+    int r = sd_bus_open_system(&bus);
     if (r < 0) {
-        fprintf(stderr, "Failed to connect to system bus to get active uids: %s\n", strerror(-r));
+        syslog(LOG_ERR, "Failed to connect to system bus to get active uids: "
+                        "%s",
+            strerror(-r));
         goto cleanup;
     }
 
     r = sd_bus_call_method(
-        bus,
-        "org.freedesktop.login1",
-        "/org/freedesktop/login1",
-        "org.freedesktop.login1.Manager",
-        "ListUsers",
-        &error,
-        &msg,
-        NULL
-    );
+        bus, "org.freedesktop.login1", "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager", "ListUsers", &error, &msg, NULL);
     if (r < 0) {
-        fprintf(stderr, "Failed to get active uids: %s\n", error.message);
-
+        syslog(LOG_ERR, "Failed to get active uids from logind: %s", error.message);
         goto cleanup;
     }
 
     r = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(uso)");
     if (r < 0) {
-        fprintf(stderr, "Failed to get active uids: %s\n", strerror(-r));
+        syslog(LOG_DEBUG, "Failed to parse active uids: %s", strerror(-r));
         goto cleanup;
     }
 
+    uid_t uid = 0;
+    ClassProperties props = { 0 };
     while ((r = sd_bus_message_read(msg, "(uso)", &uid, NULL, NULL)) > 0) {
-        if (evaluate(uid, props_list, &props) < 1) continue;
+        if (evaluate(uid, all_classes, &props) < 1) {
+            syslog(LOG_DEBUG, "Could not evaluate %d: %s", uid, strerror(-r));
+            continue;
+        }
+
         append_vector_item(uids, &uid);
         append_vector_item(classes, &props);
     }
     if (r < 0) {
-        fprintf(stderr, "Failed to parse active uids: %s\n", strerror(-r));
+        syslog(LOG_DEBUG, "Failed to parse active uids: %s", strerror(-r));
         goto cleanup;
     }
 
     r = sd_bus_message_exit_container(msg);
     if (r < 0) {
-        fprintf(stderr, "Failed to parse active uids: %s\n", strerror(-r));
+        syslog(LOG_DEBUG, "Failed to parse active uids: %s", strerror(-r));
         goto cleanup;
     }
 
@@ -478,22 +486,24 @@ cleanup:
     return r;
 }
 
-int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
+int match_user_new(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
+{
     Context* context = userdata;
-    ClassProperties props;
-    int r;
-    uid_t uid;
 
-    r = sd_bus_message_read(m, "uo", &uid, NULL);
-    if (r < 0) return r;
+    uid_t uid = 0;
+    int r = sd_bus_message_read(m, "uo", &uid, NULL);
+    if (r < 0)
+        return r;
 
     pthread_rwlock_rdlock(&context_lock);
-    r = evaluate(uid, &context->props_list, &props);
-    if (r < 0) goto cleanup;
+    ClassProperties props = { 0 };
+    r = evaluate(uid, &context->classes, &props);
+    if (r < 0)
+        goto cleanup;
 
     // User has no class; ignore
     if (r == 0) {
-        printf("%d belongs to no class. Ignoring.\n", uid);
+        syslog(LOG_INFO, "%d belongs to no class. Ignoring.", uid);
         r = 0;
         goto cleanup;
     }
@@ -511,23 +521,26 @@ cleanup:
  * are enforced. If there was an error, -1 is returned (and errno should be
  * looked up). Otherwise, 0 is returned.
  */
-static int _enforce_controls_on_class(const char *filepath, Vector *props_list) {
-    Vector active_uids, corresponding_classes;
-    ClassProperties *evaluated_props;
-    uid_t uid;
-    size_t nuids;
-    int r = 0;
+static int
+_enforce_controls_on_class(const char* filepath, HashMap* classes)
+{
+    ClassProperties* evaluated_props = NULL;
 
-    create_vector(&active_uids, sizeof (uid_t));
-    create_vector(&corresponding_classes, sizeof (ClassProperties));
-    r = _active_uids_and_class(&active_uids, &corresponding_classes, props_list);
-    if (r < 0) return -1;
+    Vector active_uids = { 0 };
+    Vector corresponding_classes = { 0 };
+    create_vector(&active_uids, sizeof(uid_t));
+    create_vector(&corresponding_classes, sizeof(ClassProperties));
+    int r = _active_uids_and_class(&active_uids, &corresponding_classes, classes);
+    if (r < 0)
+        return -1;
 
-    nuids = get_vector_count(&active_uids);
+    size_t nuids = get_vector_count(&active_uids);
     for (size_t n = 0; n < nuids; n++) {
-        uid = *((uid_t *) get_vector_item(&active_uids, n));
+        uid_t uid = *((uid_t*)get_vector_item(&active_uids, n));
         evaluated_props = get_vector_item(&corresponding_classes, n);
-        if (filepath && strcmp(filepath, evaluated_props->filepath) != 0) continue;
+        if (filepath && strcmp(filepath, evaluated_props->filepath) != 0)
+            continue;
+
         _enforce_controls(uid, &evaluated_props->controls);
     }
     destroy_vector(&active_uids);
@@ -540,35 +553,35 @@ static int _enforce_controls_on_class(const char *filepath, Vector *props_list) 
  * error, -1 is returned (and errno should be looked up). Otherwise, 0 is
  * returned.
  */
-static int _enforce_controls(uid_t uid, HashMap *controls) {
+static int
+_enforce_controls(uid_t uid, HashMap* controls)
+{
     int r = 0;
-    pid_t pid;
-    int status, arglen;
-    char *arg;
-    char **argv;
-    const char *key, *value;
-    size_t ncontrols, argc_prefix, argc, n;
+    syslog(LOG_NOTICE, "Enforcing resource controls on %d", uid);
 
-    printf("Enforcing resource controls on %d\n", uid);
+    size_t ncontrols = get_hashmap_count(controls);
+    if (ncontrols < 1)
+        return 0;
 
-    ncontrols = get_hashmap_count(controls);
-    if (ncontrols < 1) return 0;
-
-    argc_prefix = 3;                            // systemctl + set-property + unit_name
-    argc = argc_prefix + ncontrols;             // + controls ...
-    argv = malloc(sizeof *argv * (argc + 1));   // + NULL
-    if (!argv) return -1;
+    size_t argc_prefix = 3; // systemctl + set-property + unit_name
+    size_t argc = argc_prefix + ncontrols; // + controls ...
+    char** argv = malloc(sizeof *argv * (argc + 1)); // + NULL
+    if (!argv)
+        return -1;
 
     argv[0] = "systemctl";
     argv[1] = "set-property";
-    char unit_name[24];  // 32 bit uid can only be at most 11 chars long
+    char unit_name[24]; // 32 bit uid can only be at most 11 chars long
     snprintf(unit_name, 24, "user-%u.slice", uid);
     argv[2] = unit_name;
 
-    for (n = 0; n < ncontrols; n++) {
-        iter_hashmap(controls, &key, &value);
-        arglen = strlen(key) + strlen(value) + 2;
-        arg = malloc(sizeof *arg * arglen);
+    char* key = NULL;
+    char* value = NULL;
+    size_t n = 0;
+    for (; n < ncontrols; n++) {
+        iter_hashmap(controls, &key, (void**)&value);
+        int arglen = strlen(key) + strlen(value) + 2;
+        char* arg = malloc(sizeof *arg * arglen);
         if (!arg) {
             r = -1;
             iter_hashmap_end(controls);
@@ -581,33 +594,38 @@ static int _enforce_controls(uid_t uid, HashMap *controls) {
     iter_hashmap_end(controls);
     argv[argc] = NULL;
 
-    pid = fork();
+    pid_t pid = fork();
     if (pid == -1) {
-        perror("Failed to fork and set property");
+        syslog(LOG_ERR, "Failed to fork and set property");
         r = -1;
         goto exec_cleanup;
     }
     if (pid == 0) {
-        if (execv("/bin/systemctl", argv) == -1)
-            errno_die("Failed to exec and set property");
+        // FIXME: Print out the entire command
+        const char* systemctl = "/bin/systemctl";
+        syslog(LOG_DEBUG, "Exec: %s %s %s %s %s ...", systemctl, argv[0], argv[1], argv[2], argv[3]);
+        if (execv(systemctl, argv) == -1)
+            syslog(LOG_ERR, "Failed to exec and set property");
     }
 
+    int status = 0;
     waitpid(pid, &status, 0);
     if (WIFEXITED(status)) {
-        if (WEXITSTATUS(status) == 0) goto exec_cleanup;
+        if (WEXITSTATUS(status) == 0)
+            goto exec_cleanup;
 
-        for (int i = 0; argv[i]; i++) fprintf(stderr, "%s ", argv[i]);
-        fprintf(stderr, "exited with non-zero status code: %d", WEXITSTATUS(status));
-    }
-    else if (WIFSIGNALED(status)) {
-        if (WTERMSIG(status) == 0) goto exec_cleanup;
+        syslog(LOG_ERR, "systemctl exited with non-zero status code: %d",
+            WEXITSTATUS(status));
+    } else if (WIFSIGNALED(status)) {
+        if (WTERMSIG(status) == 0)
+            goto exec_cleanup;
 
-        for (int i = 0; argv[i]; i++) fprintf(stderr, "%s ", argv[i]);
-        fprintf(stderr, "recieved a signal: %s", strsignal(WTERMSIG(status)));
+        syslog(LOG_ERR, "systemctl recieved a signal: %s", strsignal(WTERMSIG(status)));
     }
 
 exec_cleanup:
-    for (size_t m = 0; m < n; m++) free(argv[argc_prefix + m]);
+    for (size_t m = 0; m < n; m++)
+        free(argv[argc_prefix + m]);
 
 cleanup:
     free(argv);

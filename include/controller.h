@@ -5,10 +5,10 @@
 
 #include <systemd/sd-bus.h>
 
-#include "vector.h"
+#include "hashmap.h"
 
 typedef struct Context {
-    Vector props_list;
+    HashMap classes;
     char* classdir;
     char* classext;
 } Context;
@@ -28,36 +28,41 @@ void destroy_context(Context* context);
 /*
  * Evaluates a uid for what class they are in.
  */
-int method_evaluate(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+int method_evaluate(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
 
 /*
  * Lists the path of the classes known.
  */
-int method_list_classes(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+int method_list_classes(sd_bus_message* m, void* userdata,
+    sd_bus_error* ret_error);
 
 /*
  * Returns a class struct associated with the given classname.
  */
-int method_get_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+int method_get_class(sd_bus_message* m, void* userdata,
+    sd_bus_error* ret_error);
 
 /*
  * Reloads a class.
  */
-int method_reload_class(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+int method_reload_class(sd_bus_message* m, void* userdata,
+    sd_bus_error* ret_error);
 
 /*
  * Reloads the daemon.
  */
-int method_daemon_reload(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+int method_daemon_reload(sd_bus_message* m, void* userdata,
+    sd_bus_error* ret_error);
 
 /*
  * Sets a transient resource control on a class.
  */
-int method_set_property(sd_bus_message *m, void *userdata, sd_bus_error *ret_error);
+int method_set_property(sd_bus_message* m, void* userdata,
+    sd_bus_error* ret_error);
 
 /*
  * Enforces a class on the new user.
  */
-int match_user_new(sd_bus_message *m, void *userdata, sd_bus_error *error);
+int match_user_new(sd_bus_message* m, void* userdata, sd_bus_error* error);
 
 #endif // CONTROLLER_H
