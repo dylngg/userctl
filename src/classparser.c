@@ -26,8 +26,7 @@
 int _insert_class_prop(ClassProperties* prop, char* restrict key,
     char* restrict value);
 void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid);
-void _print_line_error(unsigned long long linenum,
-    const char* restrict filepath,
+void _print_line_error(unsigned int linenum, const char* restrict filepath,
     const char* restrict desc);
 int _is_classfile(const struct dirent* dir);
 bool _in_class(uid_t uid, gid_t* groups, int ngroups, ClassProperties* props);
@@ -71,56 +70,54 @@ int parse_classfile(const char* filepath, ClassProperties* props)
         return -1;
 
     FILE* classfile = fopen(filepath, "r");
-    if (classfile) {
-        unsigned int linenum = 0;
-        bool errors = false;
-        char buf[LINE_BUFSIZE] = { 0 };
-        char* end = NULL;
-        char* key = NULL;
-        char* value = NULL;
+    if (!classfile) {
+        syslog(LOG_ERR, "Failed to read class file %s: %s", filepath, strerror(errno));
+        return -1;
+    }
 
-        while ((end = fgets(buf, sizeof buf / sizeof *buf, classfile))) {
-            linenum++;
+    unsigned int linenum = 0;
+    bool errors = false;
+    char buf[LINE_BUFSIZE] = { 0 };
+    char* end = NULL;
+    char* key = NULL;
+    char* value = NULL;
 
-            // Ignore blank lines
-            if (!strcmp(end, "\n"))
-                continue;
+    while ((end = fgets(buf, sizeof buf / sizeof *buf, classfile))) {
+        linenum++;
 
-            // Ignore comments
-            if (strchr(end, '#') == end)
-                continue;
+        // Ignore blank lines
+        if (!strcmp(end, "\n"))
+            continue;
 
-            // Ensure equal sign
-            if (strchr(end, '=') == NULL) {
-                _print_line_error(linenum, filepath, "No key=value found. Ignoring.");
-                continue;
-            }
-            if (parse_key_value(end, &key, &value) == -1) {
-                _print_line_error(linenum, filepath, "Failed to parse key=value");
-                errors = true;
-                continue;
-            }
-            if (_insert_class_prop(props, key, value) == -1) {
-                _print_line_error(linenum, filepath, "Unknown key=value pair");
-                errors = true;
-                continue;
-            }
+        // Ignore comments
+        if (strchr(end, '#') == end)
+            continue;
+
+        // Ensure equal sign
+        if (strchr(end, '=') == NULL) {
+            _print_line_error(linenum, filepath, "No key=value found. Ignoring.");
+            continue;
         }
-
-        if (feof(classfile)) {
-            // We are at the end of the file
-            if (errors)
-                return -1;
-            else
-                return 0;
-        } else if (ferror(classfile)) {
-            // There is an error with the stream
-            syslog(LOG_ERR, "Failed to read class file %s: %s", filepath, strerror(errno));
+        if (parse_key_value(end, &key, &value) == -1) {
+            _print_line_error(linenum, filepath, "Failed to parse key=value");
+            errors = true;
+            continue;
         }
-    } else {
+        if (_insert_class_prop(props, key, value) == -1) {
+            _print_line_error(linenum, filepath, "Unknown key=value pair");
+            errors = true;
+            continue;
+        }
+    }
+
+    if (feof(classfile)) {
+        // We are at the end of the file
+        return errors ? -1 : 0;
+    } else if (ferror(classfile)) {
+        // There is an error with the stream
         syslog(LOG_ERR, "Failed to read class file %s: %s", filepath, strerror(errno));
     }
-    return -1;
+    return 0;
 }
 
 /*
@@ -152,24 +149,37 @@ int _insert_class_prop(ClassProperties* props, char* restrict key,
     assert(props && key && value);
 
     if (strcasecmp(key, "shared") == 0) {
-        if (strcasecmp(value, "true") == 0 || strcasecmp(value, "yes") == 0)
+        if (strcasecmp(value, "true") == 0 || strcasecmp(value, "yes") == 0) {
             props->shared = true;
-        else if (strcasecmp(value, "false") == 0 || strcasecmp(value, "no") == 0)
+            return 0;
+        }
+        if (strcasecmp(value, "false") == 0 || strcasecmp(value, "no") == 0) {
             props->shared = false;
-        else
-            return -1;
-    } else if (strcasecmp(key, "priority") == 0) {
-        props->priority = strtod(value, NULL);
+            return 0;
+        }
+        return -1;
+    }
+
+    if (strcasecmp(key, "priority") == 0) {
+        double priority = strtod(value, NULL);
         if (strcmp(value, "0") != 0 && props->priority == 0)
             return -1;
-    } else if (strcasecmp(key, "groups") == 0) {
-        _parse_uids_or_gids(value, props, false);
-    } else if (strcasecmp(key, "users") == 0) {
-        _parse_uids_or_gids(value, props, true);
-    } else {
-        add_hashmap_entry(&props->controls, key, value);
+
+        props->priority = priority;
+        return 0;
     }
-    return 0;
+
+    if (strcasecmp(key, "groups") == 0) {
+        _parse_uids_or_gids(value, props, false);
+        return 0;
+    }
+
+    if (strcasecmp(key, "users") == 0) {
+        _parse_uids_or_gids(value, props, true);
+        return 0;
+    }
+
+    return add_hashmap_entry(&props->controls, key, value);
 }
 
 /*
@@ -188,14 +198,14 @@ void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid)
     while ((token = strsep(&string, ","))) {
         trim_whitespace(&token);
         if (uid_or_gid) {
-            if (to_uid(token, &id) == -1) {
+            if (to_uid(token, &id) == -1)
                 continue;
-            }
+
             append_vector_item(&props->users, (uid_t*)&id);
         } else {
-            if (to_gid(token, &id) == -1) {
+            if (to_gid(token, &id) == -1)
                 continue;
-            }
+
             append_vector_item(&props->groups, (gid_t*)&id);
         }
     }
@@ -204,10 +214,10 @@ void _parse_uids_or_gids(char* string, ClassProperties* props, bool uid_or_gid)
 /*
  * Reports on a error on a specific line in the given file.
  */
-void _print_line_error(unsigned long long linenum, const char* restrict filepath,
+void _print_line_error(unsigned int linenum, const char* restrict filepath,
     const char* restrict desc)
 {
-    syslog(LOG_ERR, "Syntax error in %s:%llu %s", filepath, linenum, desc);
+    syslog(LOG_ERR, "Syntax error in %s:%u %s", filepath, linenum, desc);
 }
 
 static const char* curr_ext = "";
@@ -234,16 +244,16 @@ int list_class_files(const char* dir, const char* ext, struct dirent*** class_fi
  */
 int _is_classfile(const struct dirent* dir)
 {
-    return (
-        dir &&
-        // Allow unknown since not _all_ (but most) file systems support d_type
-        (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN) && has_ext((char*)dir->d_name, curr_ext));
+    // Allow unknown since not _all_ (but most) file systems support d_type
+    return (dir && (dir->d_type == DT_REG || dir->d_type == DT_UNKNOWN)
+        && has_ext((char*)dir->d_name, curr_ext));
 }
 
 int evaluate(uid_t uid, HashMap* classes, ClassProperties* props)
 {
     assert(classes);
     assert(props);
+
     ClassProperties* choosen_class = NULL;
     gid_t* groups = NULL;
     int ngroups = 0;

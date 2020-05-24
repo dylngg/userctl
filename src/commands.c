@@ -381,9 +381,7 @@ void _print_status_user_line(const uid_t* users, int nusers, bool print_uids)
             if (!getpwuid(uid))
                 continue;
             printf("%lu", (unsigned long)uid);
-        }
-
-        else {
+        } else {
             if (to_username(uid, &username) == -1)
                 continue;
             printf("%s", username);
@@ -413,9 +411,7 @@ void _print_status_group_line(const uid_t* groups, int ngroups, bool print_gids)
             if (!getgrgid(gid))
                 continue;
             printf("%lu", (unsigned long)gid);
-        }
-
-        else {
+        } else {
             // Ignore invalid users
             if (to_groupname(gid, &groupname) == -1)
                 continue;
@@ -494,13 +490,13 @@ int _reload_class(const char* classname)
         goto cleanup;
     }
 
-    if (classname) {
+    if (classname)
         r = sd_bus_call_method(bus, service_name, service_path, service_name,
             "Reload", &error, NULL, "s", classname);
-    } else {
+    else
         r = sd_bus_call_method(bus, service_name, service_path, service_name,
             "DaemonReload", &error, NULL, NULL);
-    }
+
     if (r < 0) {
         fprintf(stderr, "%s\n", error.message);
         goto cleanup;

@@ -275,9 +275,9 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         sd_bus_error_set_const(ret_error, "org.dylangardner.ClassFailure",
             "Class could not be loaded.");
         goto unlock_cleanup_classname;
-    } else {
-        destroy_class(&backup);
     }
+
+    destroy_class(&backup);
     _enforce_controls_on_class(props->filepath, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
 
@@ -315,10 +315,9 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
         sd_bus_error_set_const(ret_error, "org.dylangardner.DaemonFailure",
             "Daemon could not be loaded.");
         goto unlock_cleanup;
-    } else {
-        destroy_context(&backup);
     }
 
+    destroy_context(&backup);
     _enforce_controls_on_class(NULL, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
 
