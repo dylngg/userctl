@@ -867,6 +867,6 @@ cleanup:
 void show_edit_help()
 {
     printf("userctl edit [OPTIONS...] [TARGET] \n\n"
-           "Opens up an editor for a class and reloads the class upon exit.\n"
+           "Opens up an editor and reloads the class upon exit.\n"
            "  -h --help\t\tShow this help\n");
 }
