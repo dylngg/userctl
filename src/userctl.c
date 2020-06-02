@@ -29,10 +29,10 @@ void show_help()
            "Query or send commands to the userctld daemon.\n\n"
            "  -h --help\t\tShow this help.\n\n"
            "Commands:\n"
-           "  edit\t\t\tOpens up an editor and reloads the class upon exit."
+           "  edit\t\t\tOpens up an editor and reloads the class upon exit.\n"
            "  eval\t\t\tEvaluates a user for what class they are in.\n"
            "  list\t\t\tList the possible classes.\n"
-           "  set-property\tSets a transient resource control on a class.\n"
+           "  set-property\t\tSets a transient resource control on a class.\n"
            "  status\t\tPrints the properties of the class.\n"
            "  reload\t\tReload the class.\n"
            "  daemon-reload\t\tReload the daemon.\n");

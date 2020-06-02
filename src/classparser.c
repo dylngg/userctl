@@ -166,7 +166,7 @@ int _insert_class_prop(ClassProperties* props, char* restrict key,
 
     if (strcasecmp(key, "priority") == 0) {
         double priority = strtod(value, NULL);
-        if (strcmp(value, "0") != 0 && props->priority == 0)
+        if (strcmp(value, "0") != 0 && priority == 0)
             return -1;
 
         props->priority = priority;

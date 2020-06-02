@@ -35,7 +35,7 @@ typedef struct Class {
     size_t gids_size;
 } Class;
 
-void _parse_no_args(int argc, char *argv[]);
+void _parse_no_args(int argc, char* argv[]);
 void _print_class(const char* filepath);
 void _print_class_status(Class* class, bool print_uids, bool print_gids);
 void _print_status_user_line(const uid_t* users, int nusers, bool print_uids);
@@ -74,11 +74,10 @@ int dispatch_cmd(int argc, char* argv[], const Command cmds[])
     exit(1);
 }
 
-void _parse_no_args(int argc, char *argv[])
+void _parse_no_args(int argc, char* argv[])
 {
     while (true) {
-        static struct option long_options[] = { { "help", no_argument, &help, 1 },
-                                                { 0 } };
+        static struct option long_options[] = { { "help", no_argument, &help, 1 }, { 0 } };
 
         int option_index = 0;
         int c = getopt_long(argc, argv, "h", long_options, &option_index);
