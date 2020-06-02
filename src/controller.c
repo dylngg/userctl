@@ -108,31 +108,21 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
     pthread_rwlock_rdlock(&context_lock);
 
-    Vector classnames;
-    r = create_vector(&classnames, sizeof(char*));
-    if (r < 0) {
-        pthread_rwlock_unlock(&context_lock);
-        r = -ENOMEM;
-        goto cleanup;
-    }
-    size_t nclasses = get_hashmap_count(&context->classes);
-    ensure_vector_capacity(&classnames, nclasses);
-
+    const char *classnames[MAX_CLASSES] = {0};
+    int i = 0;
     ClassProperties* props;
     while ((props = iter_hashmap_values(&context->classes)))
-        append_vector_item(&classnames, &props->filepath);
+        classnames[i++] = props->filepath;
 
     iter_hashmap_end(&context->classes);
 
-    char** classnames_strv = pretend_vector_is_array(&classnames);
-    r = sd_bus_message_append_strv(reply, classnames_strv);
+    // systemd docs says the string array is a const char array but doesn't
+    // make the function signature reflect that...
+    r = sd_bus_message_append_strv(reply, (char**) classnames);
     if (r < 0)
-        goto cleanup_classnames;
+        goto cleanup;
 
     r = sd_bus_send(NULL, reply, NULL);
-
-cleanup_classnames:
-    destroy_vector(&classnames);
 
 cleanup:
     pthread_rwlock_unlock(&context_lock);
