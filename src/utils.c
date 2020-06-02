@@ -148,3 +148,16 @@ get_filepath(const char* restrict loc, const char* restrict filename)
     sprintf(filepath, "%s/%s", loc, filename);
     return filepath;
 }
+
+const char*
+add_ext(const char* restrict string, const char* restrict ext)
+{
+    size_t new_size = strlen(string) + strlen(ext) + 1;
+    char* completed = malloc(sizeof *completed * new_size);
+    if (!completed)
+        return NULL;
+
+    strcpy(completed, string);
+    strcat(completed, ext);
+    return completed;
+}

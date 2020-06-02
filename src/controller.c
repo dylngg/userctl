@@ -141,28 +141,6 @@ cleanup:
     return r;
 }
 
-/*
- * Returns a classname with the given extension if it is not at the end of the
- * classname. If there was an error, -1 is returned. Otherwise, 1 to indicate
- * a new allocation (should be free'd), 0 otherwise.
- */
-static int
-complete_classname(char* classname, const char* ext, char** completed)
-{
-    if (!has_ext(classname, ext)) {
-        size_t new_size = strlen(classname) + strlen(ext) + 1;
-        *completed = malloc(sizeof **completed * new_size);
-        if (!*completed)
-            return -1;
-
-        strcpy(*completed, classname);
-        strcat(*completed, ext);
-        return 1;
-    }
-    *completed = classname;
-    return 0;
-}
-
 int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 {
     Context* context = userdata;
@@ -172,52 +150,39 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     if (r < 0)
         return r;
 
-    char* given_classname = NULL;
-    r = sd_bus_message_read(m, "s", &given_classname);
+    char *classname = NULL;
+    r = sd_bus_message_read(m, "s", &classname);
     if (r < 0)
         goto cleanup;
 
     pthread_rwlock_rdlock(&context_lock);
-
-    // Use classname.class instead of classname if .class extension is not given
-    char* classname = NULL;
-    r = complete_classname(given_classname, context->classext, &classname);
-    if (r < 0) {
-        r = -errno;
-        goto unlock_cleanup;
-    }
-    bool is_alloc_classname = (r == 1);
 
     ClassProperties* props = get_hashmap_entry(&context->classes, classname);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
             "No such class found (may need to daemon-reload).");
         r = -EINVAL;
-        goto unlock_cleanup_classname;
+        goto unlock_cleanup;
     }
 
     r = sd_bus_message_append(reply, "sbd", props->filepath,
         props->shared, props->priority);
     if (r < 0)
-        goto unlock_cleanup_classname;
+        goto unlock_cleanup;
 
     uid_t* users = pretend_vector_is_array(&props->users);
     size_t users_size = get_vector_count(&props->users) * sizeof *users;
     r = sd_bus_message_append_array(reply, 'u', users, users_size);
     if (r < 0)
-        goto unlock_cleanup_classname;
+        goto unlock_cleanup;
 
     gid_t* groups = pretend_vector_is_array(&props->groups);
     size_t groups_size = get_vector_count(&props->groups) * sizeof *groups;
     r = sd_bus_message_append_array(reply, 'u', groups, groups_size);
     if (r < 0)
-        goto unlock_cleanup_classname;
+        goto unlock_cleanup;
 
     r = sd_bus_send(NULL, reply, NULL);
-
-unlock_cleanup_classname:
-    if (is_alloc_classname)
-        free(classname);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -237,28 +202,19 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     if (r < 0)
         return r;
 
-    char* given_classname = NULL;
-    r = sd_bus_message_read(m, "s", &given_classname);
+    char* classname = NULL;
+    r = sd_bus_message_read(m, "s", &classname);
     if (r < 0)
         goto cleanup;
 
     pthread_rwlock_wrlock(&context_lock);
-
-    // Use classname.class instead of classname if .class extension is not given
-    char* classname = NULL;
-    r = complete_classname(given_classname, context->classext, &classname);
-    if (r < 0) {
-        r = -errno;
-        goto unlock_cleanup;
-    }
-    bool is_alloc_classname = (r == 1);
 
     ClassProperties* props = get_hashmap_entry(&context->classes, classname);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
             "No such class found (may need to daemon-reload).");
         r = -EINVAL;
-        goto unlock_cleanup_classname;
+        goto unlock_cleanup;
     }
 
     // Backup onto the stack just in case of failure
@@ -274,16 +230,12 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         memcpy(props, &backup, sizeof backup);
         sd_bus_error_set_const(ret_error, "org.dylangardner.ClassFailure",
             "Class could not be loaded.");
-        goto unlock_cleanup_classname;
+        goto unlock_cleanup;
     }
 
     destroy_class(&backup);
     _enforce_controls_on_class(props->filepath, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
-
-unlock_cleanup_classname:
-    if (is_alloc_classname)
-        free(classname);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);
@@ -377,30 +329,21 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     if (r < 0)
         return r;
 
-    char* given_classname = NULL;
+    char* classname = NULL;
     char* key = NULL;
     char* value = NULL;
-    r = sd_bus_message_read(m, "sss", &given_classname, &key, &value);
+    r = sd_bus_message_read(m, "sss", &classname, &key, &value);
     if (r < 0)
         goto cleanup;
 
     pthread_rwlock_wrlock(&context_lock);
-
-    // Use classname.class instead of classname if .class extension is not given
-    char* classname;
-    r = complete_classname(given_classname, context->classext, &classname);
-    if (r < 0) {
-        r = -errno;
-        goto unlock_cleanup;
-    }
-    bool is_alloc_classname = (r == 1);
 
     ClassProperties* props = get_hashmap_entry(&context->classes, classname);
     if (!props) {
         sd_bus_error_set_const(ret_error, "org.dylangardner.NoSuchClass",
             "No such class found (may need to daemon-reload).");
         r = -EINVAL;
-        goto unlock_cleanup_classname;
+        goto unlock_cleanup;
     }
 
     add_hashmap_entry(&props->controls, key, value);
@@ -409,10 +352,6 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
         classname);
     _enforce_controls_on_class(props->filepath, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
-
-unlock_cleanup_classname:
-    if (is_alloc_classname)
-        free(classname);
 
 unlock_cleanup:
     pthread_rwlock_unlock(&context_lock);

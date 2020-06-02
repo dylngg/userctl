@@ -287,7 +287,15 @@ void status(int argc, char* argv[])
     }
     if (optind >= argc)
         die("No class given\n");
+
     const char* classname = argv[optind];
+    bool alloc_classname = false;
+    if (!has_ext(classname, ".class")) {
+        alloc_classname = true;
+        classname = add_ext(classname, ".class");
+        if (!classname)
+            errno_die("Failed to add .class to the end of the given classname");
+    }
 
     /* Connect to the system bus */
     int r = sd_bus_open_system(&bus);
@@ -332,6 +340,9 @@ void status(int argc, char* argv[])
     _print_class_status(&class, print_uids, print_gids);
 
 cleanup:
+    if (alloc_classname)
+        free((char*) classname);
+
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
 }
@@ -542,6 +553,14 @@ void set_property(int argc, char* argv[])
         die("No resource controls given\n");
 
     const char* classname = argv[optind];
+    bool alloc_classname = false;
+    if (!has_ext(classname, ".class")) {
+        alloc_classname = true;
+        classname = add_ext(classname, ".class");
+        if (!classname)
+            errno_die("Failed to add .class to the end of the given classname");
+    }
+
     char* resource_control = argv[optind + 1];
 
     // Soft error checking just to be nice
@@ -570,6 +589,9 @@ void set_property(int argc, char* argv[])
     }
 
 cleanup:
+    if (alloc_classname)
+        free((char*) classname);
+
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
 }
@@ -615,8 +637,17 @@ void cat(int argc, char* argv[])
     const char* filepath;
     for (int i = optind; i < argc; i++) {
         const char* classname = argv[i];
+        bool alloc_classname = false;
+        if (!has_ext(classname, ".class")) {
+            alloc_classname = true;
+            classname = add_ext(classname, ".class");
+            if (!classname)
+                errno_die("Failed to add .class to the end of the given classname");
+        }
         r = sd_bus_call_method(bus, service_name, service_path, service_name,
             "GetClass", &error, &msg, "s", classname);
+        if (alloc_classname)
+            free((char*) classname);
         if (r < 0) {
             fprintf(stderr, "%s\n", error.message);
             continue;
@@ -687,6 +718,13 @@ void edit(int argc, char* argv[])
     if (optind >= argc)
         die("No class given\n");
     const char* classname = argv[optind];
+    bool alloc_classname = false;
+    if (!has_ext(classname, ".class")) {
+        alloc_classname = true;
+        classname = add_ext(classname, ".class");
+        if (!classname)
+            errno_die("Failed to add .class to the end of the given classname");
+    }
 
     /* Connect to the system bus */
     int r = sd_bus_open_system(&bus);
@@ -765,6 +803,9 @@ exec:
     }
 
 cleanup:
+    if (alloc_classname)
+        free((char*) classname);
+
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
 }

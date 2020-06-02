@@ -71,4 +71,11 @@ bool has_ext(const char* restrict string, const char* restrict ext);
 const char* get_filepath(const char* restrict dir,
     const char* restrict filename);
 
+/*
+ * Returns an allocated classname with the given extension if it is not at the
+ * end of the classname. If there was an error, NULL is returned.
+ */
+const char*
+add_ext(const char* restrict string, const char* restrict ext);
+
 #endif // UTILS_H
