@@ -119,24 +119,3 @@ void* pretend_vector_is_array(Vector* vec)
     memset(vec->data + vec->count * vec->item_size, 0, vec->item_size);
     return vec->data;
 }
-
-int convert_vector_to_array(Vector* vec, void** array, size_t* size)
-{
-    assert(vec);
-    assert(array);
-
-    size_t tmp_count = get_vector_count(vec);
-    size_t item_size = vec->item_size;
-    char* tmp_array = malloc(sizeof *tmp_array * item_size * (tmp_count + 1)); // + NULL
-    if (!tmp_array)
-        return -1;
-    memset(tmp_array + item_size * tmp_count, 0, item_size);
-
-    for (size_t i = 0; i < tmp_count; i++) {
-        const void* item = get_vector_item(vec, i);
-        memcpy(tmp_array + i * item_size, item, item_size);
-    }
-    *array = (void*)tmp_array;
-    *size = tmp_count * item_size;
-    return 0;
-}

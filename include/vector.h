@@ -77,11 +77,4 @@ void iter_vector_end(Vector* vec);
  */
 void* pretend_vector_is_array(Vector* vec);
 
-/*
- * Creates a new single allocation array (ending in NULL) from the given
- * vector. Returns -1 if there was an error (and errno should be looked up),
- * otherwise 0.
- */
-int convert_vector_to_array(Vector* vec, void** array, size_t* size);
-
 #endif // VECTOR_H
