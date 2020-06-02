@@ -96,6 +96,7 @@ int parse_classfile(const char* filepath, ClassProperties* props)
         // Ensure equal sign
         if (strchr(end, '=') == NULL) {
             _print_line_error(linenum, filepath, "No key=value found. Ignoring.");
+            errors = true;
             continue;
         }
         if (parse_key_value(end, &key, &value) == -1) {
@@ -112,6 +113,9 @@ int parse_classfile(const char* filepath, ClassProperties* props)
 
     if (feof(classfile)) {
         // We are at the end of the file
+        if (errors)
+            errno = EINVAL;
+
         return errors ? -1 : 0;
     } else if (ferror(classfile)) {
         // There is an error with the stream
