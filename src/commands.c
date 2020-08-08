@@ -340,7 +340,7 @@ void status(int argc, char* argv[])
 
 cleanup:
     if (alloc_classname)
-        free((char*) classname);
+        free((char*)classname);
 
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
@@ -589,7 +589,7 @@ void set_property(int argc, char* argv[])
 
 cleanup:
     if (alloc_classname)
-        free((char*) classname);
+        free((char*)classname);
 
     sd_bus_error_free(&error);
     sd_bus_unref(bus);
@@ -646,7 +646,7 @@ void cat(int argc, char* argv[])
         r = sd_bus_call_method(bus, service_name, service_path, service_name,
             "GetClass", &error, &msg, "s", classname);
         if (alloc_classname)
-            free((char*) classname);
+            free((char*)classname);
         if (r < 0) {
             fprintf(stderr, "%s\n", error.message);
             continue;
@@ -803,7 +803,7 @@ exec:
 
 cleanup:
     if (alloc_classname)
-        free((char*) classname);
+        free((char*)classname);
 
     sd_bus_error_free(&error);
     sd_bus_unref(bus);

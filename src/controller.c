@@ -108,7 +108,7 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
     pthread_rwlock_rdlock(&context_lock);
 
-    const char *classnames[MAX_CLASSES] = {0};
+    const char* classnames[MAX_CLASSES] = { 0 };
     int i = 0;
     ClassProperties* props;
     while ((props = iter_hashmap_values(&context->classes)))
@@ -118,7 +118,7 @@ int method_list_classes(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
     // systemd docs says the string array is a const char array but doesn't
     // make the function signature reflect that...
-    r = sd_bus_message_append_strv(reply, (char**) classnames);
+    r = sd_bus_message_append_strv(reply, (char**)classnames);
     if (r < 0)
         goto cleanup;
 
@@ -140,7 +140,7 @@ int method_get_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     if (r < 0)
         return r;
 
-    char *classname = NULL;
+    char* classname = NULL;
     r = sd_bus_message_read(m, "s", &classname);
     if (r < 0)
         goto cleanup;
