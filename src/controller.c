@@ -197,6 +197,8 @@ int method_reload_class(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     if (r < 0)
         goto cleanup;
 
+    syslog(LOG_NOTICE, "Reloading class %s", classname);
+
     pthread_rwlock_wrlock(&context_lock);
 
     ClassProperties* props = get_hashmap_entry(&context->classes, classname);
@@ -244,6 +246,8 @@ int method_daemon_reload(sd_bus_message* m, void* userdata, sd_bus_error* ret_er
     int r = sd_bus_message_new_method_return(m, &reply);
     if (r < 0)
         return r;
+
+    syslog(LOG_NOTICE, "Reloading daemon");
 
     pthread_rwlock_wrlock(&context_lock);
 
@@ -326,6 +330,8 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
     if (r < 0)
         goto cleanup;
 
+    syslog(LOG_INFO, "Setting transient property for %s: %s=%s", classname, key, value);
+
     pthread_rwlock_wrlock(&context_lock);
 
     ClassProperties* props = get_hashmap_entry(&context->classes, classname);
@@ -338,7 +344,7 @@ int method_set_property(sd_bus_message* m, void* userdata, sd_bus_error* ret_err
 
     add_hashmap_entry(&props->controls, key, value);
 
-    syslog(LOG_NOTICE, "Enforcing resource controls on all users in %s",
+    syslog(LOG_DEBUG, "Enforcing resource controls on all users in %s",
         classname);
     _enforce_controls_on_class(props->filepath, &context->classes);
     r = sd_bus_send(NULL, reply, NULL);
@@ -423,6 +429,8 @@ int match_user_new(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
     int r = sd_bus_message_read(m, "uo", &uid, NULL);
     if (r < 0)
         return r;
+
+    syslog(LOG_INFO, "Setting resource controls on uid %u", uid);
 
     pthread_rwlock_rdlock(&context_lock);
     ClassProperties props = { 0 };
