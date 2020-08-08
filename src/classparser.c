@@ -265,7 +265,7 @@ int evaluate(uid_t uid, HashMap* classes, ClassProperties* props)
     double highest_priority = -INFINITY;
 
     if (get_groups(uid, &groups, &ngroups) < 0) {
-        syslog(LOG_ERR, "Failed to get group list for %d", uid);
+        syslog(LOG_ERR, "Failed to get group list for %u", uid);
         return -1;
     }
 

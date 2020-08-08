@@ -391,7 +391,7 @@ _active_uids_and_class(Vector* uids, Vector* classes, HashMap* all_classes)
     ClassProperties props = { 0 };
     while ((r = sd_bus_message_read(msg, "(uso)", &uid, NULL, NULL)) > 0) {
         if (evaluate(uid, all_classes, &props) < 1) {
-            syslog(LOG_DEBUG, "Could not evaluate %d: %s", uid, strerror(-r));
+            syslog(LOG_DEBUG, "Could not evaluate uid %u: %s", uid, strerror(-r));
             continue;
         }
 
@@ -432,7 +432,7 @@ int match_user_new(sd_bus_message* m, void* userdata, sd_bus_error* ret_error)
 
     // User has no class; ignore
     if (r == 0) {
-        syslog(LOG_INFO, "%d belongs to no class. Ignoring.", uid);
+        syslog(LOG_INFO, "uid %u belongs to no class. Ignoring.", uid);
         r = 0;
         goto cleanup;
     }
@@ -486,7 +486,7 @@ static int
 _enforce_controls(uid_t uid, HashMap* controls)
 {
     int r = 0;
-    syslog(LOG_NOTICE, "Enforcing resource controls on %d", uid);
+    syslog(LOG_DEBUG, "Enforcing resource controls on uid %u", uid);
 
     size_t ncontrols = get_hashmap_count(controls);
     if (ncontrols < 1)
